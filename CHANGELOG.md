@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-09
+
 ### 构建发布（P0 组件化落地）
 
 - 接入 `vite-plugin-dts`，`npm run build` 自动生成 `dist/index.d.ts` 及各模块类型声明。
@@ -48,7 +50,3 @@
 - `core` 目录：数据类型定义、宝塔吊线布局纯函数、Worker 入口、数据校验。
 - 主组件 `FamilyTreeChart` 定义 Props / Emits / Slots，含受控状态与命令式 API。
 - demo 演示页与控制面板（方向、排行、承继、间距、层距、字号等）。
-
-## [1.0.0]
-
-- 首个稳定发布版本（初始规划目标），待发布时标注。
