@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/3163807235/vue-family-tree-chart.git"
+    "url": "git+https://github.com/3163807235/vue-family-tree-chart.git"
   },
   "main": "./dist/index.umd.cjs",
   "module": "./dist/index.es.mjs",
@@ -65,7 +65,10 @@
     "vite": "^5.2.0",
     "vite-plugin-dts": "^3.9.0",
     "vitest": "^2.1.9",
-    "vue": "^3.4.0",
+    "vue": "^3.5.42",
     "vue-tsc": "^2.0.0"
+  },
+  "dependencies": {
+    "vue-family-tree-chart": "file:vue-family-tree-chart-1.0.0.tgz"
   }
 }
