@@ -1,0 +1,14 @@
+node_modules
+src
+demo
+test
+dist/types
+*.log
+.vite
+.npmrc
+editorconfig
+.eslintrc*
+.prettierrc*
+.git
+.gitignore
+.github
