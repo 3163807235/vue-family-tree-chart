@@ -1,9 +1,9 @@
 {
   "name": "vue-family-tree-chart",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "type": "module",
-  "description": "家谱宝塔吊线图 Vue 3 组件：WebWorker 布局 + SVG 视口虚拟渲染",
-  "author": "贾启刚",
+  "description": "Family tree chart Vue 3 component with WebWorker layout and SVG virtual render",
+  "author": "Jia Qigang",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,14 +14,8 @@
   "types": "./dist/index.d.ts",
   "unpkg": "./dist/index.umd.cjs",
   "jsdelivr": "./dist/index.umd.cjs",
-  "files": [
-    "dist",
-    "README.md",
-    "CHANGELOG.md"
-  ],
-  "sideEffects": [
-    "**/*.css"
-  ],
+  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "sideEffects": ["**/*.css"],
   "engines": {
     "node": ">=18"
   },
@@ -38,37 +32,8 @@
     },
     "./style.css": "./dist/style.css"
   },
-  "keywords": [
-    "vue",
-    "family-tree",
-    "genealogy",
-    "svg",
-    "virtual-render",
-    "webworker"
-  ],
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:types": "vue-tsc --emitDeclarationOnly --outDir dist/types",
-    "typecheck": "vue-tsc --noEmit",
-    "test": "vitest run",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
-  },
+  "keywords": ["vue", "family-tree", "genealogy", "svg", "virtual-render", "webworker"],
   "peerDependencies": {
     "vue": "^3.3.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-vue": "^5.0.0",
-    "@vue/test-utils": "^2.5.0",
-    "jsdom": "^24.1.3",
-    "typescript": "^5.4.0",
-    "vite": "^5.2.0",
-    "vite-plugin-dts": "^3.9.0",
-    "vitest": "^2.1.9",
-    "vue": "^3.5.42",
-    "vue-tsc": "^2.0.0"
-  },
-  "dependencies": {
-    "vue-family-tree-chart": "file:vue-family-tree-chart-1.0.0.tgz"
   }
 }
