@@ -146,8 +146,14 @@ function isHighlightEdge(e: { parentId: string; childId: string }): boolean {
 // 视口：受控优先，否则内部
 const currentView = computed<ViewBox>(() => props.view ?? internalView.value)
 
-// 首次布局完成前需自动适配视口（仅在非受控模式）
-const needInitView = ref(true)
+// 用户是否已手动交互（拖拽/缩放）；交互后停止自动定位，保留用户视口
+const userInteracted = ref(false)
+// 折叠/展开目标节点 id：本次交互折叠某节点后，布局完成时把视口居中到该节点，
+// 避免折叠导致树收缩、节点移出视野而无法确认操作结果
+const pendingFocus = ref<string | null>(null)
+// 数据源变化时置位：布局完成后自动定位到始祖（fit）。仅数据重新生成才置位；
+// 间距/字号调整绝不置位，从而彻底避免调间距触发 focusRoot 引起意外缩放
+const focusRequested = ref(false)
 
 // ===== 交互 composable：平移缩放 + 虚拟渲染 =====
 const virtual = useVirtualRender({
@@ -233,6 +239,8 @@ onMounted(() => {
       worker.value = null
     }
   }
+  // 首屏：请求自动定位到始祖（fit），使默认缩放生效
+  focusRequested.value = true
   doLayout()
 })
 
@@ -262,8 +270,27 @@ function onWorkerMessage(e: MessageEvent) {
 }
 
 // ============ 布局触发：依赖变化即重算（替代手动 rootDirty 脏标记） ============
+// 数据源变化（重新生成）→ 重算并请求自动定位到始祖（fit）
 watch(
-  [() => props.data, () => props.collapsed, () => props.gapX, () => props.gapY],
+  () => props.data,
+  () => {
+    if (dataError.value) return
+    focusRequested.value = true
+    doLayout()
+  },
+  { deep: false }
+)
+// 折叠变化 → 仅重算（折叠点击路径由 handleNodeTap 设置 pendingFocus）
+watch(
+  () => props.collapsed,
+  () => {
+    if (!dataError.value) doLayout()
+  },
+  { deep: false }
+)
+// 间距/字号变化 → 仅重算布局、保持当前视图；绝不请求自动定位，避免缩放
+watch(
+  [() => props.gapX, () => props.gapY, () => props.mainStyle?.size],
   () => {
     if (!dataError.value) doLayout()
   },
@@ -279,7 +306,9 @@ function doLayout() {
     gapX: props.gapX,
     gapY: props.gapY,
     // collapsed 需复制为纯数组（reactive Proxy 数组不可结构化克隆）
-    collapsed: [...props.collapsed]
+    collapsed: [...props.collapsed],
+    // 主字号：布局据此测量节点内容高度，自适应吊线起点
+    mainSize: props.mainStyle?.size
   }
   if (props.useWorker && worker.value && workerAlive.value) {
     layoutPending.value = true
@@ -291,7 +320,7 @@ function doLayout() {
 
 function doLayoutFallback() {
   try {
-    const r = runLayout(props.data, props.gapX, props.gapY, props.collapsed)
+    const r = runLayout(props.data, props.gapX, props.gapY, props.collapsed, props.mainStyle?.size)
     applyLayout(r)
   } catch (e) {
     dataError.value = e as Error
@@ -310,10 +339,20 @@ function applyLayout(r: LayoutResult) {
     textDegraded: virtual.textDegraded.value,
     total: totalNodes.value
   })
-  // 首次收到布局结果且未受控时，自动适配视口使整图可见
-  if (needInitView.value) {
-    needInitView.value = false
-    if (props.view === undefined) nextTick(() => fitView())
+  // 数据源变化时自动定位到始祖（fit）；间距/字号调整绝不走此分支，保持缩放不变
+  if (focusRequested.value) {
+    focusRequested.value = false
+    if (!userInteracted.value && props.view === undefined) {
+      requestAnimationFrame(() => focusRoot())
+      return
+    }
+  }
+  // 折叠/展开某节点后：布局完成时把视口居中到该节点（保留用户当前缩放），
+  // 避免折叠令树收缩、节点移出视野而无法确认操作结果
+  if (pendingFocus.value && props.view === undefined) {
+    const id = pendingFocus.value
+    pendingFocus.value = null
+    requestAnimationFrame(() => focusNode(id))
   }
 }
 
@@ -332,6 +371,8 @@ function handleNodeTap(node: FamilyNode) {
   if (ret === false) return
   if (willCollapse) existing.add(node.id)
   else existing.delete(node.id)
+  // 记录本次交互的节点，供布局重算完成后将视口居中到它（保留用户缩放）
+  pendingFocus.value = node.id
   emit('update:collapsed', Array.from(existing))
 }
 
@@ -394,12 +435,14 @@ function viewX(x: number): number {
 
 // 透传给 usePanZoom 的事件处理器（模板绑定 SVG 元素样式）
 function onWheel(e: WheelEvent, el: SVGSVGElement) {
+  userInteracted.value = true
   panzoom.onWheel(e, el)
 }
 function onPointerDown(e: PointerEvent, el: SVGSVGElement) {
   // 在捕获前记录真实 target 命中的节点（捕获后 target 会重定向到 svg）
   const g = (e.target as Element | null)?.closest?.('g.ftc-node')
   downHitId.value = g ? g.getAttribute('data-id') : null
+  userInteracted.value = true
   panzoom.onPointerDown(e, el)
 }
 function onPointerMove(e: PointerEvent, el: SVGSVGElement) {
@@ -420,6 +463,45 @@ function fitView() {
   const w = r.width
   const aspect = containerAspect()
   syncView({ x: 0, y: 0, w, h: w * aspect })
+}
+
+/**
+ * 初始默认视图：等待容器可测后，以始祖节点（depth 0）为焦点，
+ * 放大到整树宽度的 1/20，平移到始祖节点处于视口中心。
+ */
+function focusRoot() {
+  const r = layoutResult.value
+  if (!r) return
+  const aspect = stableAspect()
+  if (aspect === null) {
+    // 容器尚未稳定，下帧重试，确保定位基于正确的实际尺寸
+    if (focusRetryCount.value++ < 10) requestAnimationFrame(() => focusRoot())
+    return
+  }
+  const root = r.nodes.find(n => n.depth === 0)
+  // 默认缩放恒定 1:1：viewBox 可视宽 = 容器实际像素宽，文字像素尺寸不随节点数量变化。
+  // （原 r.width/20 会使人少(树窄)时 viewBox 过小 → 元素被过度放大）
+  const el = svgEl.value
+  const w = el && el.clientWidth > 0 ? el.clientWidth : Math.max(r.width / 20, 120)
+  const h = el && el.clientHeight > 0 ? el.clientHeight : w * aspect
+  const cx = root ? root.x : r.width / 2
+  const cy = root ? root.y : 0
+  // 直接定位（不插值）：每次布局重算后自动归位到始祖中心，避免视口残留在旧位置形成"跑偏/瞬间放大"
+  syncView({ x: cx - w / 2, y: cy - h / 2, w, h })
+}
+
+/** 初始定位等待容器尺寸稳定的重试次数 */
+const focusRetryCount = ref(0)
+
+/**
+ * 获取容器宽高比；若容器尚未稳定（宽高为 0）返回 null，由调用方重试。
+ */
+function stableAspect(): number | null {
+  const el = svgEl.value
+  if (!el) return null
+  const rect = el.getBoundingClientRect()
+  if (!(rect.width > 0) || !(rect.height > 0)) return null
+  return rect.height / rect.width
 }
 
 function focusNode(id: string) {

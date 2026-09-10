@@ -26,7 +26,8 @@ self.onmessage = (e: MessageEvent<WorkerInbound>) => {
       cachedRoot as never,
       input.gapX,
       input.gapY,
-      input.collapsed || []
+      input.collapsed || [],
+      input.mainSize
     )
     ;(self as unknown as Worker).postMessage({
       type: 'layoutDone',

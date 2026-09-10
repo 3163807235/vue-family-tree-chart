@@ -43,6 +43,9 @@ export interface LayoutNode {
   rank: string | null
   /** 承继标签词，无则 null */
   inherit: string | null
+  /** 下吊线顶点相对锚点 y 的向下偏移（本地坐标，默认=卡底 24；内容超出时自适应更下），
+   *  折叠/展开按钮据此定位，保证按钮与吊线顶点同源同步 */
+  dropY?: number
 }
 
 /** 布局后连线信息（含可见区间二分用边界） */
@@ -107,6 +110,8 @@ export interface LayoutInput {
   gapX: number
   gapY: number
   collapsed: string[]
+  /** 主字号（用于测量节点内容高度，自适应吊线起点） */
+  mainSize?: number
 }
 
 /** Worker 布局输出消息 */

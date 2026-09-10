@@ -24,6 +24,13 @@ const props = defineProps<{
 
 const SP_W = 12
 const HH = 24
+/** 文字内容区与上下连接线的统一垂直净距（与 layout.ts 的 PADDING_V 保持一致） */
+const PAD_V = 5
+/** 首字纵向锚点：= PAD_V + size/2，使首字上沿恒等于「卡顶 + PAD_V」，
+ *  与布局端 nameOrigin 公式一致；字号增大文字向下伸展，与上连接线间距恒定 */
+const NAME_TOP = computed(() => PAD_V + Math.round(props.textMain.size / 2))
+/** 行距 = 1.05 × 字号（与布局端 lineH 公式一致） */
+const LINE_H = computed(() => Math.round(props.textMain.size * 1.05))
 
 // 卡左右半宽随内容自适应（竖排姓名列 + 配偶列），对齐基准保持在姓名列中线
 const layout = computed(() => {
@@ -44,12 +51,11 @@ const layout = computed(() => {
   return { nameHW, spouseBase, spouseHW, leftHW, rightHW, spouseX }
 })
 
-// 竖排姓名：行距随字号，贴卡顶逐字下落
+// 竖排姓名：行距随字号（LINE_H），锚点随字号下移逐字下落（文字向下、不向上溢出）
 const nameTspans = computed(() => {
   const n = props.node
   const name = n.name || ''
-  const lineH = Math.round(props.textMain.size * 1.05)
-  return name.split('').map((ch, i) => ({ ch, y: Math.round(-HH + 10 + i * lineH) }))
+  return name.split('').map((ch, i) => ({ ch, y: Math.round(-HH + NAME_TOP.value + i * LINE_H.value) }))
 })
 
 // 排行/承继：节点正上方吊线旁竖排
@@ -68,15 +74,15 @@ const spousePlans = computed(() => {
   const spH = Math.round(props.textAux.size * 1.1)
   return n.spouse.map((spName, sIdx) => ({
     x: layout.value.spouseX[sIdx],
-    chars: spName.split('').map((ch, i) => ({ ch, y: Math.round(-HH + 10 + i * spH) }))
+    chars: spName.split('').map((ch, i) => ({ ch, y: Math.round(-HH + NAME_TOP.value + i * spH) }))
   }))
 })
 
-// 折叠/展开按钮锚点：置于节点底部下方、吊线进入下一层节点的中央处
-// （与下一节点开始圈同轴线，视觉上形成连续关联，且不遮卡片下缘）
+// 折叠/展开按钮锚点：直接取布局写入的吊线顶点 dropY（默认卡底 HH），
+// 与吊线同源同值，节点位置/字号/层级变化时按钮与吊线顶点始终同步
 const others = computed(() => ({
-  x: 0,         // 吊线沿节点中央向下
-  y: HH + 0     // 卡片下缘之下留出间距
+  x: 0,                                      // 吊线沿节点中央向下
+  y: props.node.dropY ?? HH                   // 吊线顶点（布局单一来源）
 }))
 </script>
 
@@ -155,8 +161,8 @@ const others = computed(() => ({
 
     <!-- 折叠/展开按钮：置于名字列底部，双状态视觉反馈（折叠=+，展开=−） -->
     <g v-if="enableFold !== false && node.hasChildren" class="ftc-fold-badge">
-      <circle :cx="others.x" :cy="others.y" :r="8" class="ftc-fold-dot" />
-      <text :x="others.x" :y="others.y + 1" text-anchor="middle" dominant-baseline="middle" font-size="10" class="ftc-fold-text">{{ node.collapsed ? '+' : '−' }}</text>
+      <circle :cx="others.x" :cy="others.y" :r="6" class="ftc-fold-dot" />
+      <text :x="others.x" :y="others.y + 0.5" text-anchor="middle" dominant-baseline="middle" font-size="8" class="ftc-fold-text">{{ node.collapsed ? '+' : '−' }}</text>
     </g>
   </g>
 </template>
@@ -185,6 +191,7 @@ const others = computed(() => ({
 .ftc-node-spouse { pointer-events: none; user-select: none; }
 /* 折叠/展开按钮：需可命中，故显式允许指针事件（徽标位于热区外） */
 .ftc-fold-badge { pointer-events: all; cursor: pointer; }
-.ftc-fold-dot { fill: #9C3E28; stroke: #7E2F1F; }
-.ftc-fold-text { fill: #FFF4E0; font-weight: 700; }
+/* 背景白色、描边与连线同色（--ftc-edge-color 或 #A97F4F）、图标黑色 */
+.ftc-fold-dot { fill: #FFFFFF; stroke: var(--ftc-edge-color, #A97F4F); stroke-width: 1.2; }
+.ftc-fold-text { fill: var(--ftc-edge-color, #A97F4F); font-weight: 700; }
 </style>

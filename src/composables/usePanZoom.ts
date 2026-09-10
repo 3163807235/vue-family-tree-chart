@@ -68,7 +68,10 @@ export function usePanZoom(commitView: (v: ViewBox) => void, opts: PanZoomOption
     const wy = v.y + my * v.h
     const nw = Math.min(Math.max(v.w * factor, MIN_W), opts.layoutW.value * MAX_W_ZOOM)
     const aspect = rect.height / Math.max(1, rect.width)
-    commitView({ x: wx - mx * nw, y: wy - my * nw, w: nw, h: nw * aspect })
+    const nh = nw * aspect
+    // 缩放中心锚定：鼠标下世界点 (wx,wy) 缩放后仍需落在屏幕比例 (mx,my) 处。
+    // 注意纵向须用新高度 nh（= nw*aspect），而非宽度 nw，否则 aspect≠1 时纵向会持续漂移。
+    commitView({ x: wx - mx * nw, y: wy - my * nh, w: nw, h: nh })
   }
 
   function onWheel(e: WheelEvent, el: SVGSVGElement) {

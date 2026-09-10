@@ -1,6 +1,6 @@
 {
   "name": "vue-family-tree-chart",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "Family tree chart Vue 3 component with WebWorker layout and SVG virtual render",
   "author": "Jia Qigang",
@@ -33,7 +33,26 @@
     "./style.css": "./dist/style.css"
   },
   "keywords": ["vue", "family-tree", "genealogy", "svg", "virtual-render", "webworker"],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
   "peerDependencies": {
     "vue": "^3.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@vue/test-utils": "^2.5.0",
+    "jsdom": "^24.1.3",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vite-plugin-dts": "^3.9.1",
+    "vitest": "^2.1.9",
+    "vue": "^3.5.42",
+    "vue-tsc": "^2.2.12"
   }
 }

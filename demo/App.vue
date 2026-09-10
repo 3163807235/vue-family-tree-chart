@@ -4,20 +4,28 @@ import { FamilyTreeChart } from '../src'
 import type { FamilyNode, Direction, TextStyle } from '../src/core/types'
 
 // 演示数据生成器（简化版，方便本地验证）
+// 使用固定种子的伪随机数：保证每次刷新生成同一棵树，
+// 避免因树宽不同导致 focusRoot 的 width/20 缩放比例不稳定、文字忽大忽小
 const SURNAMES = '李王张刘陈杨赵黄'.split('')
 const GIVEN = '世明文章志德永长兴启'.split('')
+// 线性同余伪随机数（固定种子），替代 Math.random 使刷新后数据一致
+let seed = 20260909
+function rnd(): number {
+  seed = (1103515245 * seed + 12345) & 0x7fffffff
+  return seed / 0x7fffffff
+}
+function pick<T>(arr: readonly T[]): T { return arr[Math.floor(rnd() * arr.length)] }
 function genFamily(target: number): FamilyNode {
   let counter = 0
   function mk(): FamilyNode {
     counter += 1
-    const gender = Math.random() < 0.5 ? 'm' : 'f'
+    const gender = rnd() < 0.5 ? 'm' : 'f'
     return {
       id: 'p' + counter,
-      name: SURNAMES[Math.floor(Math.random() * SURNAMES.length)] +
-        GIVEN[Math.floor(Math.random() * GIVEN.length)],
+      name: pick(SURNAMES) + pick(GIVEN),
       gender,
-      spouse: Math.random() < 0.35 ? (gender === 'm' ? ['刘氏', '张氏'] : ['赵氏']) : undefined,
-      inherit: Math.random() < 0.15 ? (['承继', '过继', '兼祧'] as const)[Math.floor(Math.random() * 3)] : undefined,
+      spouse: rnd() < 0.35 ? (gender === 'm' ? ['刘氏', '张氏'] : ['赵氏']) : undefined,
+      inherit: rnd() < 0.15 ? (['承继', '过继', '兼祧'] as const)[Math.floor(rnd() * 3)] : undefined,
       children: []
     }
   }
@@ -27,7 +35,7 @@ function genFamily(target: number): FamilyNode {
   while (counter < target && head < queue.length) {
     const n = queue[head++]
     if ((n as unknown as { depth: number }).depth >= 8) continue
-    const k = Math.max(1, Math.min(8, Math.round(2 + (Math.random() * 2 - 1))))
+    const k = Math.max(1, Math.min(8, Math.round(2 + (rnd() * 2 - 1))))
     for (let i = 0; i < k && counter < target; i++) {
       const c = mk()
       ;(c as unknown as { depth: number }).depth = ((n as unknown as { depth: number }).depth || 0) + 1
@@ -128,7 +136,8 @@ function toggleRootFold() {
 
 <style>
 html, body { margin: 0; height: 100%; font-family: sans-serif; }
-.page { display: flex; flex-direction: column; height: 100%; padding: 12px; box-sizing: border-box; }
+#app { height: 100%; }
+.page { display: flex; flex-direction: column; height: 100%; padding: 12px; box-sizing: border-box; overflow: hidden; }
 .panel {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   margin-bottom: 8px; padding: 8px 10px; border: 1px solid #E4D5C0;
