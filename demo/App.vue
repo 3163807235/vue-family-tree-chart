@@ -46,7 +46,22 @@ function genFamily(target: number): FamilyNode {
   return root
 }
 
-const data = ref<FamilyNode>(genFamily(500))
+// 固定演示树（便于直观验证"叶子零推有子兄弟"布局）：
+// a(根) 有 3 子：b(左,有子 e)、c(中,有子 f/g/h)、d(右,无子=叶子)
+function demoFixed(): FamilyNode {
+  return {
+    id: 'a', name: '始祖', gender: 'm',
+    children: [
+      { id: 'b', name: '次子', gender: 'm', children: [{ id: 'e', name: '戊', gender: 'm' }] },
+      { id: 'c', name: '长子', gender: 'm', children: [
+          { id: 'f', name: '己', gender: 'm' },
+          { id: 'g', name: '庚', gender: 'm' },
+          { id: 'h', name: '辛', gender: 'm' }] },
+      { id: 'd', name: '三子', gender: 'm' }
+    ]
+  }
+}
+const data = ref<FamilyNode>(demoFixed())
 const collapsed = ref<string[]>([])
 
 // ===== 控制项状态（与原 HTML 一致），全部透传给组件 =====

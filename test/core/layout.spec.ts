@@ -75,10 +75,12 @@ describe('runLayout', () => {
   })
 
   it('gapX 增大使多列布局更宽', () => {
+    // 每个有子兄弟都带「多个叶子后代」的分支子树：其子树宽度含兄弟间接缝，随 gapX 增长，
+    // 故增大间距时整体布局变宽（若只有单个叶子后代，宽度=固定 famWidth，新语义下不会变宽）
     const wideRoot = mk('1', 'A', 'm', [
-      mk('2', 'B', 'm', [mk('5', 'E', 'f')]),
-      mk('3', 'C', 'm', [mk('6', 'F', 'f')]),
-      mk('4', 'D', 'm', [mk('7', 'G', 'f')])
+      mk('2', 'B', 'm', [mk('5', 'E', 'f'), mk('8', 'H', 'f')]),
+      mk('3', 'C', 'm', [mk('6', 'F', 'f'), mk('9', 'I', 'f')]),
+      mk('4', 'D', 'm', [mk('7', 'G', 'f'), mk('10', 'J', 'f')])
     ])
     const tight = runLayout(wideRoot, 80, 70, [])
     const loose = runLayout(wideRoot, 160, 140, [])
@@ -91,28 +93,39 @@ describe('runLayout', () => {
       .toBeLessThan(runLayout(deepRoot, 80, 140, []).height)
   })
 
-  it('以始祖为水平基准线：调节 gapX 时始祖 x 恒为 0，两侧对称外扩', () => {
+  it('标准宝塔树：间距=gapX 1:1 直控、叶子均匀分布、父节点居中于其子孙叶子', () => {
     const root = mk('1', 'A', 'm', [
-      mk('2', 'B', 'm', [mk('5', 'E', 'f')]),
-      mk('3', 'C', 'm', [mk('6', 'F', 'f')]),
-      mk('4', 'D', 'm', [mk('7', 'G', 'f')])
+      mk('2', 'B', 'm', [mk('5', 'E', 'f'), mk('8', 'H', 'f')]),
+      mk('3', 'C', 'm', [mk('6', 'F', 'f'), mk('9', 'I', 'f')]),
+      mk('4', 'D', 'm', [mk('7', 'G', 'f'), mk('10', 'J', 'f')])
     ])
     const tight = runLayout(root, 80, 70, [])
     const loose = runLayout(root, 160, 140, [])
-    const rootOf = (r: ReturnType<typeof runLayout>) => {
-      const n = r.nodes.find(x => x.depth === 0)!
-      const kids = r.nodes.filter(x => x.depth === 1)
-      return { rootX: n.x, left: Math.min(...kids.map(k => k.x)), right: Math.max(...kids.map(k => k.x)) }
+    // 叶子按 STEP=gapX 均匀分布（任一相邻叶子间距恒等于 gapX，1:1 直控）
+    const leafXs = (r: ReturnType<typeof runLayout>) =>
+      r.nodes.filter(n => !n.hasChildren).map(n => n.x).sort((a, b) => a - b)
+    const tx = leafXs(tight)
+    const lx = leafXs(loose)
+    // 紧凑模型：相邻叶子卡片「净间隙」= gapX，中心距 = 卡片宽(32) + gapX（叶子不虚占整列）
+    const FW = 32
+    expect(tx.length).toBe(6)
+    for (let i = 1; i < tx.length; i++) expect(tx[i] - tx[i - 1]).toBe(FW + 80)
+    for (let i = 1; i < lx.length; i++) expect(lx[i] - lx[i - 1]).toBe(FW + 160)
+    // 父节点居中于其子孙叶子中点；布局末尾整体平移使根节点恒为 x=0
+    const rootXOf = (r: ReturnType<typeof runLayout>) => r.nodes.find(n => n.depth === 0)!.x
+    const centered = (r: ReturnType<typeof runLayout>) => {
+      const xs = leafXs(r)
+      return (xs[0] + xs[xs.length - 1]) / 2
     }
-    const t = rootOf(tight)
-    const l = rootOf(loose)
-    expect(t.rootX).toBe(0) // 始祖恒为基准线
-    expect(l.rootX).toBe(0) // 增大间距后始祖依然不动
-    // 间隙增大 => 子树左右对称外扩（左负侧更左、右正侧更右），跨度随间隙增大
-    expect(t.left).toBeLessThan(0)
-    expect(l.left).toBeLessThan(t.left)
-    expect(l.right).toBeGreaterThan(t.right)
-    expect(l.right - l.left).toBeGreaterThan(t.right - t.left)
+    expect(rootXOf(tight)).toBe(0)
+    expect(rootXOf(loose)).toBe(0)
+    expect(centered(tight)).toBe(0) // 叶子群中点也对齐到 0（左右对称）
+    expect(centered(loose)).toBe(0)
+    // 调节 gapX 时以根节点为中心向左右两边对称扩展（左更左、右更右），整树更宽
+    expect(tx[0]).toBeLessThan(0)
+    expect(lx[0]).toBeLessThan(tx[0])
+    expect(lx[lx.length - 1]).toBeGreaterThan(tx[tx.length - 1])
+    expect(loose.width).toBeGreaterThan(tight.width)
   })
 
   it('名字短（不超卡片）时，吊线起点使用默认高度（卡片下缘）', () => {
