@@ -1,8 +1,6 @@
 // WebWorker 入口：接收布局消息，调用 runLayout 并回传结果
 import { runLayout } from './layout'
-import type { WorkerInbound, WorkerOutbound, LayoutInput } from './types'
-
-let cachedRoot: unknown = null
+import type { WorkerInbound, WorkerOutbound } from './types'
 
 self.onmessage = (e: MessageEvent<WorkerInbound>) => {
   const msg = e.data
@@ -13,28 +11,17 @@ self.onmessage = (e: MessageEvent<WorkerInbound>) => {
   }
   if (msg.type !== 'layout') return
   try {
-    const input = msg as LayoutInput
-    if (input.root !== undefined) cachedRoot = input.root
-    if (!cachedRoot) {
-      ;(self as unknown as Worker).postMessage({
-        type: 'error',
-        message: 'no root'
-      } as WorkerOutbound)
-      return
-    }
-    const r = runLayout(
-      cachedRoot as never,
-      input.gapX,
-      input.gapY,
-      input.collapsed || [],
-      input.mainSize
-    )
+    const r = runLayout(msg.root, msg.gapX, msg.gapY, msg.collapsed || [], msg.mainSize)
     ;(self as unknown as Worker).postMessage({
       type: 'layoutDone',
       nodes: r.nodes,
       edges: r.edges,
       width: r.width,
       height: r.height,
+      minX: r.minX,
+      maxX: r.maxX,
+      minY: r.minY,
+      maxY: r.maxY,
       elapsed: r.elapsed
     } as WorkerOutbound)
   } catch (err) {

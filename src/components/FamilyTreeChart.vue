@@ -104,7 +104,7 @@ const layoutResult = shallowRef<LayoutResult | null>(null)
 
 // 悬停高亮：当前悬停节点 id
 const hoveredId = ref<string | null>(null)
-// 悬停防抖计时器（控制 ≤200ms 内响应，避免快速扫过时频繁重建）
+// 悬停防抖计时器（60ms 防抖，避免快速扫过时频繁重建）
 const hoverTimer = shallowRef<ReturnType<typeof setTimeout> | null>(null)
 
 /**
@@ -260,6 +260,10 @@ function onWorkerMessage(e: MessageEvent) {
       edges: data.edges,
       width: data.width,
       height: data.height,
+      minX: data.minX,
+      maxX: data.maxX,
+      minY: data.minY,
+      maxY: data.maxY,
       elapsed: data.elapsed
     }
     applyLayout(r)
@@ -356,10 +360,11 @@ function applyLayout(r: LayoutResult) {
   }
 }
 
-// ============ 交互：节点点击折叠（受控回写） ============
-// pointerdown 时命中的节点 id（在 setPointerCapture 之前记录，
+// ============ 交互：点击折叠（仅折叠徽标触发；节点主体点击只派发 nodeClick） ============
+// pointerdown 时命中的节点 id 与是否落在折叠徽标上（在 setPointerCapture 之前记录，
 // 因为捕获后 pointerup 的 target 会被重定向到 svg，无法再用 closest 命中）
 const downHitId = ref<string | null>(null)
+const downHitBadge = ref(false)
 
 function handleNodeTap(node: FamilyNode) {
   emit('nodeClick', node)
@@ -380,7 +385,7 @@ function onNodeDblclick(node: FamilyNode) {
   emit('nodeDblclick', node)
 }
 
-// ============ 悬停高亮（≤200ms 防抖，避免频繁扫过节点时反复重建集合） ============
+// ============ 悬停高亮（60ms 防抖，避免频繁扫过节点时反复重建集合） ============
 function scheduleHighlight(id: string | null) {
   if (hoverTimer.value) {
     clearTimeout(hoverTimer.value)
@@ -406,18 +411,25 @@ function onNodeLeave() {
 
 /**
  * SVG 上 pointerup 统一分发：
- * 拖拽 i (moved) → 不触发点击；否则命中节点则折叠；命中空白则只结束交互，
- * 保留用户当前缩放/平移，不重置视口。
+ * 拖拽 (moved) → 不触发点击；否则按 pointerdown 的命中分发——
+ * 命中折叠徽标 → nodeClick + 折叠/展开切换；
+ * 命中节点主体 → 仅派发 nodeClick，不改变折叠状态；
+ * 命中空白 → 只结束交互，保留用户当前缩放/平移，不重置视口。
  */
 function onSvgPointerUp(e: PointerEvent, el: SVGSVGElement) {
   const { moved } = panzoom.onPointerUp(e, el)
-  if (moved) { downHitId.value = null; return }
-  // 用 pointerdown 时记录的真实命中节点 id；命中节点则折叠
+  if (moved) { downHitId.value = null; downHitBadge.value = false; return }
+  // 用 pointerdown 时记录的真实命中信息；命中节点则按徽标/主体分发
   const id = downHitId.value
+  const onBadge = downHitBadge.value
   downHitId.value = null
+  downHitBadge.value = false
   if (id && layoutResult.value) {
     const node = layoutResult.value.nodes.find(n => n.id === id)
-    if (node) handleNodeTap(node as unknown as FamilyNode)
+    if (node) {
+      if (onBadge) handleNodeTap(node as unknown as FamilyNode)
+      else emit('nodeClick', node as unknown as FamilyNode)
+    }
   }
   // 点击空白：不做任何视口变更，保持用户当前的缩放比例
 }
@@ -428,9 +440,12 @@ function syncView(v: ViewBox) {
   emit('update:view', v)
 }
 
-/** RTL 坐标镜像：布局世界坐标 x → 显示坐标（rtl 时关于整树中心对称反转） */
+/** RTL 坐标镜像：布局世界坐标 x → 显示坐标。
+ *  布局以始祖为 x=0 锚点、左右两侧对称展开（minX 可为负），
+ *  故 rtl 镜像必须关于 0 反转（-x）；旧实现按整树宽 VW 反转（VW-x）
+ *  是"世界坐标从 0 起排"时代的假设，会把半棵树推出世界框右缘。 */
 function viewX(x: number): number {
-  return props.direction === 'rtl' ? (layoutResult.value?.width ?? 1) - x : x
+  return props.direction === 'rtl' ? -x : x
 }
 
 // 透传给 usePanZoom 的事件处理器（模板绑定 SVG 元素样式）
@@ -439,9 +454,11 @@ function onWheel(e: WheelEvent, el: SVGSVGElement) {
   panzoom.onWheel(e, el)
 }
 function onPointerDown(e: PointerEvent, el: SVGSVGElement) {
-  // 在捕获前记录真实 target 命中的节点（捕获后 target 会重定向到 svg）
-  const g = (e.target as Element | null)?.closest?.('g.ftc-node')
+  // 在捕获前记录真实 target 命中的节点与是否落在折叠徽标（捕获后 target 会重定向到 svg）
+  const t = e.target as Element | null
+  const g = t?.closest?.('g.ftc-node')
   downHitId.value = g ? g.getAttribute('data-id') : null
+  downHitBadge.value = !!t?.closest?.('.ftc-fold-badge')
   userInteracted.value = true
   panzoom.onPointerDown(e, el)
 }
@@ -450,49 +467,6 @@ function onPointerMove(e: PointerEvent, el: SVGSVGElement) {
 }
 
 // ============ 暴露给父级的命令式方法 ============
-function containerAspect(): number {
-  const el = svgEl.value
-  if (!el) return 1
-  const rect = el.getBoundingClientRect()
-  return rect.height / Math.max(1, rect.width)
-}
-
-function fitView() {
-  if (!layoutResult.value) return
-  const r = layoutResult.value
-  const w = r.width
-  const aspect = containerAspect()
-  syncView({ x: 0, y: 0, w, h: w * aspect })
-}
-
-/**
- * 初始默认视图：等待容器可测后，以始祖节点（depth 0）为焦点，
- * 放大到整树宽度的 1/20，平移到始祖节点处于视口中心。
- */
-function focusRoot() {
-  const r = layoutResult.value
-  if (!r) return
-  const aspect = stableAspect()
-  if (aspect === null) {
-    // 容器尚未稳定，下帧重试，确保定位基于正确的实际尺寸
-    if (focusRetryCount.value++ < 10) requestAnimationFrame(() => focusRoot())
-    return
-  }
-  const root = r.nodes.find(n => n.depth === 0)
-  // 默认缩放恒定 1:1：viewBox 可视宽 = 容器实际像素宽，文字像素尺寸不随节点数量变化。
-  // （原 r.width/20 会使人少(树窄)时 viewBox 过小 → 元素被过度放大）
-  const el = svgEl.value
-  const w = el && el.clientWidth > 0 ? el.clientWidth : Math.max(r.width / 20, 120)
-  const h = el && el.clientHeight > 0 ? el.clientHeight : w * aspect
-  const cx = root ? root.x : r.width / 2
-  const cy = root ? root.y : 0
-  // 直接定位（不插值）：每次布局重算后自动归位到始祖中心，避免视口残留在旧位置形成"跑偏/瞬间放大"
-  syncView({ x: cx - w / 2, y: cy - h / 2, w, h })
-}
-
-/** 初始定位等待容器尺寸稳定的重试次数 */
-const focusRetryCount = ref(0)
-
 /**
  * 获取容器宽高比；若容器尚未稳定（宽高为 0）返回 null，由调用方重试。
  */
@@ -504,6 +478,49 @@ function stableAspect(): number | null {
   return rect.height / rect.width
 }
 
+function fitView() {
+  if (!layoutResult.value) return
+  const r = layoutResult.value
+  // 按内容真实包围盒取景（根锚定 x=0，minX 可为负），四周留 pad 余量并居中；
+  // 不能假设内容从 x=0 起——旧实现 viewBox.x=0 会把树的左半切出屏幕
+  const pad = 40
+  const aspect = stableAspect() ?? 1
+  const spanX = Math.max(r.maxX - r.minX, 120)
+  const spanY = Math.max(r.maxY - r.minY, 120)
+  let w = spanX + pad * 2
+  let h = w * aspect
+  const minH = spanY + pad * 2
+  if (h < minH) { h = minH; w = h / Math.max(aspect, 0.05) }
+  const cx = (r.minX + r.maxX) / 2
+  const cy = (r.minY + r.maxY) / 2
+  syncView({ x: cx - w / 2, y: cy - h / 2, w, h })
+}
+
+/**
+ * 初始默认视图：等待容器可测后，以始祖节点为焦点按恒定 1:1 定位
+ * （viewBox 可视宽 = 容器实际像素宽，文字像素尺寸不随节点数量变化）。
+ */
+function focusRoot() {
+  const r = layoutResult.value
+  if (!r) return
+  const aspect = stableAspect()
+  if (aspect === null) {
+    // 容器尚未稳定，下帧重试，确保定位基于正确的实际尺寸
+    if (focusRetryCount.value++ < 10) requestAnimationFrame(() => focusRoot())
+    return
+  }
+  // 布局以根节点起 DFS，nodes[0] 即始祖（x 恒为 0）
+  const root = r.nodes[0]
+  const el = svgEl.value
+  const w = el && el.clientWidth > 0 ? el.clientWidth : 800
+  const h = el && el.clientHeight > 0 ? el.clientHeight : w * aspect
+  // 直接定位（不插值）：每次布局重算后自动归位到始祖中心，避免视口残留在旧位置形成"跑偏/瞬间放大"
+  syncView({ x: root.x - w / 2, y: root.y - h / 2, w, h })
+}
+
+/** 初始定位等待容器尺寸稳定的重试次数 */
+const focusRetryCount = ref(0)
+
 function focusNode(id: string) {
   const r = layoutResult.value
   if (!r) return
@@ -511,7 +528,8 @@ function focusNode(id: string) {
   if (!n) return
   const w = internalView.value.w
   const h = internalView.value.h
-  syncView({ x: n.x - w / 2, y: n.y - h / 2, w, h })
+  // viewBox 位于显示坐标系，RTL 时节点显示位置为 -n.x，需镜像后居中
+  syncView({ x: viewX(n.x) - w / 2, y: n.y - h / 2, w, h })
 }
 
 function expandAll() {
@@ -585,7 +603,7 @@ defineExpose({ fitView, focusNode, expandAll, collapseAll, toggleDirection })
             <path v-for="ed in visibleEdges" :key="ed.d"
                   :d="ed.d" class="ftc-edge"
                   :class="{ 'ftc-edge-hl': isHighlightEdge(ed) }"
-                  :transform="props.direction === 'rtl' ? `translate(${layoutResult.width},0) scale(-1,1)` : undefined"
+                  :transform="props.direction === 'rtl' ? 'scale(-1,1)' : undefined"
                   marker-start="url(#ftc-dotEdge)"
                   marker-end="url(#ftc-dotEdge)" />
             <!-- 节点：仅渲染当前视口可见；默认渲染委托给 DefaultNode -->

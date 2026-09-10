@@ -110,7 +110,7 @@ const others = computed(() => ({
     />
     <template v-if="!textDegraded">
       <!-- 竖排姓名 -->
-      <text class="ftc-node-text" fill="textMain" text-anchor="middle">
+      <text class="ftc-node-text" text-anchor="middle">
         <tspan
           v-for="(t, i) in nameTspans"
           :key="i"

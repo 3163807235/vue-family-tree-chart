@@ -76,7 +76,7 @@ describe('FamilyTreeChart', () => {
     expect(svg.findAll('g[data-id]').length).toBe(4)
   })
 
-  it('点击节点触发 nodeClick 并回写 update:collapsed', async () => {
+  it('点击节点主体仅派发 nodeClick，不触发折叠/展开', async () => {
     const onNode = vi.fn()
     const onUpdate = vi.fn()
     const w = mountChart({
@@ -87,20 +87,22 @@ describe('FamilyTreeChart', () => {
     await settle(w)
     const g = w.find('g[data-id="p1"]')
     expect(g.exists()).toBe(true)
-    // 模拟 pointerdown + pointerup 单击（非拖拽）
+    // 模拟 pointerdown + pointerup 单击（非拖拽、非徽标）
     await g.trigger('pointerdown', { clientX: 100, clientY: 100 })
     expect(w.find('svg.ftc-view').classes()).toContain('dragging')
     await g.trigger('pointerup', { clientX: 100, clientY: 100 })
     expect(onNode).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }))
-    expect(onUpdate).toHaveBeenCalled()
+    expect(onUpdate).not.toHaveBeenCalled() // 主体点击不折叠
   })
 
-  it('回归：pointer capture 后 pointerup target 被重定向为 svg，仍正确识别命中节点', async () => {
+  it('回归：pointer capture 后 pointerup target 被重定向为 svg，主体点击仍派发 nodeClick 且不折叠', async () => {
     // 真实浏览器中 setPointerCapture 会把后续 pointerup 的 target 指向 svg；
-    // 组件应依据 pointerdown 时记录的命中 id 折叠，而非被重定向的 target
+    // 组件应依据 pointerdown 时记录的命中 id 分发，而非被重定向的 target
+    const onNode = vi.fn()
     const onUpdate = vi.fn()
     const w = mountChart({
       collapsed: [],
+      onNodeClick: onNode,
       'onUpdate:collapsed': onUpdate
     })
     await settle(w)
@@ -109,9 +111,8 @@ describe('FamilyTreeChart', () => {
     // pointerdown 命中节点 → pointerup 事件以 svg 为 target（模拟捕获）
     await g.trigger('pointerdown', { clientX: 100, clientY: 100 })
     await svg.trigger('pointerup', { clientX: 100, clientY: 100 })
-    expect(onUpdate).toHaveBeenCalled()
-    // 折叠 p1 而非触发空白 fitView
-    expect(onUpdate.mock.calls[0][0]).toEqual(expect.arrayContaining(['p1']))
+    expect(onNode).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }))
+    expect(onUpdate).not.toHaveBeenCalled()
   })
 
   it('点击折叠徽标（+）可展开该折叠节点', async () => {
@@ -175,9 +176,11 @@ describe('FamilyTreeChart', () => {
       onBeforeFold: onBefore
     })
     await settle(w)
-    const g = w.find('g[data-id="p1"]')
-    await g.trigger('pointerdown', { clientX: 100, clientY: 100 })
-    await g.trigger('pointerup', { clientX: 100, clientY: 100 })
+    const badge = w.find('g[data-id="p1"] .ftc-fold-badge')
+    expect(badge.exists()).toBe(true)
+    // 折叠只由徽标触发：pointerdown 落在徽标上 + svg pointerup（模拟捕获）
+    await badge.trigger('pointerdown', { clientX: 100, clientY: 100 })
+    await w.find('svg.ftc-view').trigger('pointerup', { clientX: 100, clientY: 100 })
     // beforeFold 属观察型事件；阻止折叠需通过受控 collapsed 回写实现（见 enableFold）
     expect(onBefore).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }), true)
     expect(onUpdate).toHaveBeenCalled()

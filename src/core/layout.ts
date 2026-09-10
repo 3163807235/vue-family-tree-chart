@@ -18,8 +18,6 @@ const PADDING_V = 4
 const SP_W = 12
 /** 配偶竖文字体半宽 */
 const GLYPH = 5
-/** 右侧水平留白 */
-const H_MARGIN = 80
 /** 根节点起始 y */
 const BASE_Y = 60
 
@@ -34,7 +32,7 @@ function rankLabel(g: string, count: number): string {
 }
 
 /** 家庭单元内容宽（世界坐标 px）：卡 + 配偶列贴合 */
-function famWidth(n: FamilyNode, gapX: number): number {
+function famWidth(n: { spouse?: string[] | null }): number {
   const spc = n.spouse ? n.spouse.length : 0
   const R = spc ? HW + 6 + (spc - 1) * SP_W + GLYPH : HW
   return HW + Math.max(HW, R)
@@ -142,7 +140,7 @@ export function runLayout(
       dropY: thisDrop
     })
 
-    const selfW = famWidth(n, gapX)
+    const selfW = famWidth(n)
     // 本节点轮廓：相对深度 0 即卡片自身（左缘 -HW，右缘 -HW+selfW）
     const L: number[] = [-HW]
     const R: number[] = [-HW + selfW]
@@ -271,18 +269,27 @@ export function runLayout(
   for (let bi = 0; bi < nodes.length; bi++) {
     const nd = nodes[bi]
     const left = nd.x - HW
-    const right = nd.x - HW + famWidth(nd as unknown as FamilyNode, gapX)
+    const right = nd.x - HW + famWidth(nd)
     if (left < minX) minX = left
     if (right > maxX) maxX = right
   }
   if (minX > maxX) { minX = 0; maxX = 0 }
 
+  // 内容纵向包围盒：顶层卡顶 ~ 最深层的最大内容下缘（含吊线自适应下探）
+  const minY = layerY[0] - HALF
+  const maxY = layerY[maxDepth] + (layerBottom[maxDepth] ?? DEFAULT_DROP)
+
   const t1 = typeof performance !== 'undefined' ? performance.now() : 0
   return {
     nodes,
     edges,
-    width: (maxX - minX) + H_MARGIN * 2,
-    height: layerY[maxDepth] + (layerBottom[maxDepth] ?? DEFAULT_DROP) + 140,
+    // width/height = 内容真实跨度（不含任何额外留白；fitView 取景时自行加 pad）
+    width: maxX - minX,
+    height: maxY - minY,
+    minX,
+    maxX,
+    minY,
+    maxY,
     elapsed: t1 - t0
   }
 }

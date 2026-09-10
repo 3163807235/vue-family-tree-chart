@@ -81,14 +81,14 @@ export function useVirtualRender(state: VirtualRenderState) {
     if (!r || !s) return []
     const v = state.view.value
     const rtl = state.direction.value === 'rtl'
-    const VW = r.width
     const vx0 = v.x - PAD
     const vx1 = v.x + v.w + PAD
     const vy0 = v.y - PAD
     const vy1 = v.y + v.h + PAD
-    // RTL：坐标层水平反转，lo/hi 为镜像后的可见世界区间
-    const lo = rtl ? VW - vx1 : vx0
-    const hi = rtl ? VW - vx0 : vx1
+    // RTL：显示坐标 = -世界坐标（布局以始祖 x=0 锚点，镜像关于 0 反转），
+    // lo/hi 为镜像后的可见世界区间
+    const lo = rtl ? -vx1 : vx0
+    const hi = rtl ? -vx0 : vx1
     const out: LayoutNode[] = []
     const idx = lowerBoundX(s.nodes, lo)
     for (let i = idx; i < s.nodes.length; i++) {
@@ -107,13 +107,13 @@ export function useVirtualRender(state: VirtualRenderState) {
     if (!r || !s) return []
     const v = state.view.value
     const rtl = state.direction.value === 'rtl'
-    const VW = r.width
     const vx0 = v.x - PAD
     const vx1 = v.x + v.w + PAD
     const vy0 = v.y - PAD
     const vy1 = v.y + v.h + PAD
-    const lo = rtl ? VW - vx1 : vx0
-    const hi = rtl ? VW - vx0 : vx1
+    // 与 visibleNodes 相同的 RTL 镜像（关于 0 反转）
+    const lo = rtl ? -vx1 : vx0
+    const hi = rtl ? -vx0 : vx1
     const out: LayoutEdge[] = []
     const idx = lowerBoundY(s.edges, vy0)
     for (let i = idx; i < s.edges.length; i++) {

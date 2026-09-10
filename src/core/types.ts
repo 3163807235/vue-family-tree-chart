@@ -68,6 +68,11 @@ export interface LayoutResult {
   edges: LayoutEdge[]
   width: number
   height: number
+  /** 内容真实包围盒（根锚定 x=0，minX 可为负），供 fitView 取景居中 */
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
   /** 布局耗时（ms） */
   elapsed: number
 }
@@ -121,6 +126,11 @@ export interface LayoutOutput {
   edges: LayoutEdge[]
   width: number
   height: number
+  /** 内容真实包围盒（根锚定 x=0，minX 可为负） */
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
   elapsed: number
 }
 

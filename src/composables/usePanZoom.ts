@@ -107,14 +107,15 @@ export function usePanZoom(commitView: (v: ViewBox) => void, opts: PanZoomOption
     }
   }
 
-  /** 拖拽结束；返回是否发生了平移（false 表示是单击，可继续分发点击/折叠） */
-  function onPointerUp(e: PointerEvent, el: SVGSVGElement): { moved: boolean; target: EventTarget | null } {
+  /** 拖拽结束；返回是否发生了平移（false 表示是单击，可继续分发点击/折叠）。
+   *  注意：不返回 e.target——setPointerCapture 后 target 被重定向到 svg，不可信 */
+  function onPointerUp(e: PointerEvent, el: SVGSVGElement): { moved: boolean } {
     const d = drag.value
-    if (!d) return { moved: false, target: null }
+    if (!d) return { moved: false }
     const wasMoved = d.moved
     drag.value = null
     el.classList.remove('dragging')
-    return { moved: wasMoved, target: e.target }
+    return { moved: wasMoved }
   }
 
   // 组件卸载时释放 drag 状态
