@@ -103,10 +103,6 @@ export function runLayout(
     }
   }
 
-  // 一个直接子是否构成「有子嗣的房」（有子且未被折叠）；无后叶子 / 已折叠节点不算
-  const isBranchKid = (c: FamilyNode): boolean =>
-    !!(c.children && c.children.length) && !collapsed[c.id]
-
   // 每个（参与布局的）节点相对其父根的水平偏移；第二遍 DFS 累加为绝对 x
   const relXById = new Map<string, number>()
   // 每个父节点实际排布的直接子 id（折叠后被收起的子不在内），供第二遍生成连线
@@ -200,21 +196,10 @@ export function runLayout(
     }
     childIdsByParent.set(n.id, childIds)
 
-    // 父节点居中：以「有子嗣（未折叠）的房」首末为基准，使各房围绕父亲对称；
-    // 无后的叶子只在其原始子序位置就地贴接（轮廓合并时仅占同层卡宽），
-    // 不参与深层避让、也不把父亲中心拉向末端——避免绝后一房把整树拉偏、拉出空档。
-    // 若本层全是叶子，则退化为居中于首末叶子。
-    let firstIdx = 0
-    let lastIdx = kids.length - 1
-    let bi = 0
-    while (bi < kids.length && !isBranchKid(kids[bi])) bi++
-    if (bi < kids.length) {
-      firstIdx = bi
-      let bj = kids.length - 1
-      while (bj >= 0 && !isBranchKid(kids[bj])) bj--
-      lastIdx = bj
-    }
-    const offset = (shifts[firstIdx] + shifts[lastIdx]) / 2
+    // 父节点居中于「首个直接子 ~ 末个直接子」的中点（经典 RT 规则）：
+    // 无论哪房有后代，父亲始终落在子群横向范围的正中，横梁两侧等长；
+    // 叶子仅通过轮廓合并影响子群宽度，不会额外拉偏父亲。
+    const offset = (shifts[0] + shifts[shifts.length - 1]) / 2
     for (let j = 0; j < kids.length; j++) {
       relXById.set(kids[j].id, shifts[j] - offset)
     }

@@ -1,6 +1,6 @@
 {
   "name": "vue-family-tree-chart",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "description": "Family tree chart Vue 3 component with WebWorker layout and SVG virtual render",
   "author": "Jia Qigang",
