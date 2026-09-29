@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { FamilyTreeChart } from '../src'
-import type { FamilyNode, Direction, TextStyle } from '../src/core/types'
+import type { FamilyNode, Direction, TextStyle, SpouseFormat } from '../src/core/types'
 
 // 演示数据生成器（简化版，方便本地验证）
 // 使用固定种子的伪随机数：保证每次刷新生成同一棵树，
@@ -50,13 +50,13 @@ function genFamily(target: number): FamilyNode {
 // a(根) 有 3 子：b(左,有子 e)、c(中,有子 f/g/h)、d(右,无子=叶子)
 function demoFixed(): FamilyNode {
   return {
-    id: 'a', name: '始祖', gender: 'm',
+    id: 'a', name: '始祖', gender: 'm', spouse: ['王芳', '李秀英'],
     children: [
-      { id: 'b', name: '次子', gender: 'm', children: [{ id: 'e', name: '戊', gender: 'm' }] },
-      { id: 'c', name: '长子', gender: 'm', children: [
-          { id: 'f', name: '己', gender: 'm' },
-          { id: 'g', name: '庚', gender: 'm' },
-          { id: 'h', name: '辛', gender: 'm' }] },
+      { id: 'b', name: '长子', gender: 'm', spouse: ['张晓梅'], children: [{ id: 'e', name: '二戊', gender: 'm', spouse: ['陈丽华'] }] },
+      { id: 'c', name: '次子', gender: 'm', spouse: ['刘桂英'], children: [
+          { id: 'f', name: '二己', gender: 'm', spouse: ['赵丽'] },
+          { id: 'g', name: '二庚', gender: 'm' },
+          { id: 'h', name: '二辛', gender: 'm', spouse: ['孙玉珍', '周淑华'] }] },
       { id: 'd', name: '三子', gender: 'm' }
     ]
   }
@@ -70,6 +70,7 @@ const showRank = ref(true)
 const showInherit = ref(true)
 const enableFold = ref(true)
 const hoverHighlight = ref(true)
+const spouseFormat = ref<SpouseFormat>('full')
 const gapX = ref(100)
 const gapY = ref(96)
 const spGap = ref(6)
@@ -108,16 +109,21 @@ function toggleRootFold() {
       <button :class="['tg', showInherit && 'on']" @click="showInherit = !showInherit">承继</button>
       <button :class="['tg', enableFold && 'on']" @click="enableFold = !enableFold">折叠</button>
       <button :class="['tg', hoverHighlight && 'on']" @click="hoverHighlight = !hoverHighlight">高亮</button>
+      <button :class="['tg', spouseFormat === 'surname' && 'on']"
+              @click="spouseFormat = spouseFormat === 'full' ? 'surname' : 'full'"
+              :title="spouseFormat === 'full' ? '当前：完整姓名；点击切换为某氏格式' : '当前：某氏格式；点击切换为完整姓名'">
+        {{ spouseFormat === 'full' ? '全名' : '某氏' }}
+      </button>
 
       <span class="sep"></span>
       <label class="ctl">间距
-        <input type="range" min="56" max="400" v-model.number="gapX">
+        <input type="range" min="30" max="400" v-model.number="gapX">
       </label>
       <label class="ctl">层距
         <input type="range" min="70" max="180" v-model.number="gapY">
       </label>
       <label class="ctl">配偶距
-        <input type="range" min="0" max="30" v-model.number="spGap">
+        <input type="range" min="7" max="30" v-model.number="spGap">
       </label>
 
       <span class="sep"></span>
@@ -141,6 +147,7 @@ function toggleRootFold() {
         :show-inherit="showInherit"
         :enable-fold="enableFold"
         :hover-highlight="hoverHighlight"
+        :spouse-format="spouseFormat"
         :main-style="mainStyle"
         :aux-style="auxStyle"
         @layout-ready="onLayoutReady"

@@ -108,6 +108,14 @@ export interface PerfMetrics {
 /** 排版方向 */
 export type Direction = 'ltr' | 'rtl'
 
+/**
+ * 配偶辅助文字显示模式：
+ * - 'full'：完整姓名（默认，数据原样展示）
+ * - 'surname'：某氏格式（取姓氏首字 + "氏"，如 "王芳" → "王氏"）
+ * 数据始终以完整姓名存储，切换仅影响展示，不影响 LayoutNode.spouse 原值
+ */
+export type SpouseFormat = 'full' | 'surname'
+
 /** Worker 布局输入消息 */
 export interface LayoutInput {
   type: 'layout'
@@ -117,6 +125,8 @@ export interface LayoutInput {
   collapsed: string[]
   /** 主字号（用于测量节点内容高度，自适应吊线起点） */
   mainSize?: number
+  /** 辅字号（用于测量配偶列宽度，自适应列间距） */
+  auxSize?: number
 }
 
 /** Worker 布局输出消息 */

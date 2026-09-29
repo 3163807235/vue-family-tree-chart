@@ -15,7 +15,8 @@ import type {
   ViewBox,
   TextStyle,
   PerfMetrics,
-  Direction
+  Direction,
+  SpouseFormat
 } from '../core/types'
 
 interface Props {
@@ -53,6 +54,8 @@ interface Props {
   interactive?: boolean
   /** 是否启用悬停高亮分支（默认 true），线条加粗变色并突出相关分支 */
   hoverHighlight?: boolean
+  /** 配偶辅助文字显示模式：'full'=完整姓名（默认）；'surname'=某氏格式（如"王芳"→"王氏"） */
+  spouseFormat?: SpouseFormat
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -68,7 +71,8 @@ const props = withDefaults(defineProps<Props>(), {
   showRuler: true,
   enableFold: true,
   interactive: true,
-  hoverHighlight: true
+  hoverHighlight: true,
+  spouseFormat: 'full'
 })
 
 const emit = defineEmits<{
@@ -294,7 +298,7 @@ watch(
 )
 // 间距/字号变化 → 仅重算布局、保持当前视图；绝不请求自动定位，避免缩放
 watch(
-  [() => props.gapX, () => props.gapY, () => props.mainStyle?.size],
+  [() => props.gapX, () => props.gapY, () => props.mainStyle?.size, () => props.auxStyle?.size],
   () => {
     if (!dataError.value) doLayout()
   },
@@ -312,7 +316,9 @@ function doLayout() {
     // collapsed 需复制为纯数组（reactive Proxy 数组不可结构化克隆）
     collapsed: [...props.collapsed],
     // 主字号：布局据此测量节点内容高度，自适应吊线起点
-    mainSize: props.mainStyle?.size
+    mainSize: props.mainStyle?.size,
+    // 辅字号：布局据此测量配偶列宽度，自适应列间距
+    auxSize: props.auxStyle?.size
   }
   if (props.useWorker && worker.value && workerAlive.value) {
     layoutPending.value = true
@@ -324,7 +330,7 @@ function doLayout() {
 
 function doLayoutFallback() {
   try {
-    const r = runLayout(props.data, props.gapX, props.gapY, props.collapsed, props.mainStyle?.size)
+    const r = runLayout(props.data, props.gapX, props.gapY, props.collapsed, props.mainStyle?.size, props.auxStyle?.size)
     applyLayout(r)
   } catch (e) {
     dataError.value = e as Error
@@ -627,6 +633,7 @@ defineExpose({ fitView, focusNode, expandAll, collapseAll, toggleDirection })
                 :show-rank="showRank"
                 :show-inherit="showInherit"
                 :enable-fold="enableFold"
+                :spouse-format="spouseFormat"
               />
             </g>
           </g>

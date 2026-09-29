@@ -1,7 +1,7 @@
 <!-- 默认节点渲染：姓名竖排 + 字典活配偶列 + 排行/承继标签 + 折叠徽标 -->
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { LayoutNode, Direction } from '../core/types'
+import type { LayoutNode, Direction, SpouseFormat } from '../core/types'
 
 interface TextStyleCfg {
   size: number
@@ -20,9 +20,13 @@ const props = defineProps<{
   showInherit?: boolean
   /** 全局开关：是否允许折叠/展开 */
   enableFold?: boolean
+  /** 配偶辅助文字显示模式（默认 'full'）：'full'=完整姓名；'surname'=某氏（"王芳"→"王氏"） */
+  spouseFormat?: SpouseFormat
 }>()
 
-const SP_W = 12
+/** 配偶列横向步距：随辅字号动态计算，保证列间净距 ≥ 字号（一字符宽），
+ *  辅字号 ≤10 时回退 12（与布局端 spW 一致），>10 时按 auxSize+2 自动扩展 */
+const SP_W = computed(() => Math.max(12, props.textAux.size + 2))
 const HH = 24
 /** 文字内容区与上下连接线的统一垂直净距（与 layout.ts 的 PADDING_V 保持一致） */
 const PAD_V = 5
@@ -38,7 +42,7 @@ const layout = computed(() => {
   const nameHW = props.textMain.size / 2 + 4
   const spouseBase = props.textMain.size / 2 + props.spGap
   const spouseHW = n.spouse && n.spouse.length
-    ? spouseBase + (n.spouse.length - 1) * SP_W + props.textAux.size / 2 + 4
+    ? spouseBase + (n.spouse.length - 1) * SP_W.value + props.textAux.size / 2 + 4
     : 0
   const ltr = props.direction !== 'rtl'
   const leftHW = ltr ? nameHW : Math.max(nameHW, spouseHW)
@@ -46,7 +50,7 @@ const layout = computed(() => {
   const sign = ltr ? 1 : -1
   const spouseX: number[] = []
   if (n.spouse) {
-    for (let s = 0; s < n.spouse.length; s++) spouseX.push(sign * (spouseBase + s * SP_W))
+    for (let s = 0; s < n.spouse.length; s++) spouseX.push(sign * (spouseBase + s * SP_W.value))
   }
   return { nameHW, spouseBase, spouseHW, leftHW, rightHW, spouseX }
 })
@@ -67,15 +71,27 @@ function titleTspans(text: string) {
     .map((ch, i) => ({ ch, y: Math.round(-HH - 15 + (i - (len - 1) / 2) * TITLE_ROW_H) }))
 }
 
+/** 配偶展示名格式化：仅影响渲染，不改写 LayoutNode.spouse 原值（数据存储完整） */
+function formatSpouse(name: string): string {
+  if (props.spouseFormat !== 'surname') return name
+  // 已是"X氏"形式则原样展示；否则取首字符作姓氏拼"氏"
+  if (/氏$/.test(name)) return name
+  const first = name.charAt(0)
+  return first ? `${first}氏` : name
+}
+
 // 配偶竖排：行距随辅助字号
 const spousePlans = computed(() => {
   const n = props.node
   if (!n.spouse) return []
   const spH = Math.round(props.textAux.size * 1.1)
-  return n.spouse.map((spName, sIdx) => ({
-    x: layout.value.spouseX[sIdx],
-    chars: spName.split('').map((ch, i) => ({ ch, y: Math.round(-HH + NAME_TOP.value + i * spH) }))
-  }))
+  return n.spouse.map((spName, sIdx) => {
+    const display = formatSpouse(spName)
+    return {
+      x: layout.value.spouseX[sIdx],
+      chars: display.split('').map((ch, i) => ({ ch, y: Math.round(-HH + NAME_TOP.value + i * spH) }))
+    }
+  })
 })
 
 // 折叠/展开按钮锚点：直接取布局写入的吊线顶点 dropY（默认卡底 HH），

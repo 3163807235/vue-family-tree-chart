@@ -11,7 +11,7 @@ self.onmessage = (e: MessageEvent<WorkerInbound>) => {
   }
   if (msg.type !== 'layout') return
   try {
-    const r = runLayout(msg.root, msg.gapX, msg.gapY, msg.collapsed || [], msg.mainSize)
+    const r = runLayout(msg.root, msg.gapX, msg.gapY, msg.collapsed || [], msg.mainSize, msg.auxSize)
     ;(self as unknown as Worker).postMessage({
       type: 'layoutDone',
       nodes: r.nodes,

@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import DefaultNode from '../../src/components/DefaultNode.vue'
-import type { LayoutNode, Direction } from '../../src/core/types'
+import type { LayoutNode, Direction, SpouseFormat } from '../../src/core/types'
 
 const textMain = { size: 12, color: '#333', font: '' }
 const textAux = { size: 10, color: '#999', font: '' }
@@ -30,6 +30,7 @@ function mountNode(node: LayoutNode, opts: Partial<{
   showRank: boolean
   showInherit: boolean
   enableFold: boolean
+  spouseFormat: SpouseFormat
 }> = {}) {
   return mount(DefaultNode, {
     props: {
@@ -41,7 +42,8 @@ function mountNode(node: LayoutNode, opts: Partial<{
       textDegraded: opts.textDegraded ?? false,
       showRank: opts.showRank,
       showInherit: opts.showInherit,
-      enableFold: opts.enableFold
+      enableFold: opts.enableFold,
+      spouseFormat: opts.spouseFormat
     }
   })
 }
@@ -61,6 +63,31 @@ describe('DefaultNode', () => {
     // 每任配偶竖排成字
     expect(spouseGroups[0].findAll('tspan').length).toBe(2) // 刘氏
     expect(spouseGroups[1].findAll('tspan').length).toBe(2) // 张氏
+  })
+
+  it('spouseFormat=full（默认）时配偶按完整姓名原样展示', () => {
+    const w = mountNode(mkNode({ spouse: ['王芳', '李秀英'] }))
+    const groups = w.findAll('text.ftc-node-spouse')
+    expect(groups[0].findAll('tspan').map(t => t.text()).join('')).toBe('王芳')
+    expect(groups[1].findAll('tspan').map(t => t.text()).join('')).toBe('李秀英')
+  })
+
+  it('spouseFormat=surname 时配偶折叠为「某氏」格式', () => {
+    const w = mountNode(mkNode({ spouse: ['王芳', '李秀英'] }), { spouseFormat: 'surname' })
+    const groups = w.findAll('text.ftc-node-spouse')
+    expect(groups[0].findAll('tspan').map(t => t.text()).join('')).toBe('王氏')
+    expect(groups[1].findAll('tspan').map(t => t.text()).join('')).toBe('李氏')
+  })
+
+  it('spouseFormat=surname 时已是「某氏」的名字原样保留', () => {
+    const w = mountNode(mkNode({ spouse: ['刘氏'] }), { spouseFormat: 'surname' })
+    expect(w.find('text.ftc-node-spouse').findAll('tspan').map(t => t.text()).join('')).toBe('刘氏')
+  })
+
+  it('切换 spouseFormat 不改写 LayoutNode.spouse 原值', () => {
+    const node = mkNode({ spouse: ['王芳'] })
+    mountNode(node, { spouseFormat: 'surname' })
+    expect(node.spouse).toEqual(['王芳'])
   })
 
   it('渲染排行与承继标签', () => {

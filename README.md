@@ -64,6 +64,7 @@ const collapsed = ref<string[]>([])
 | `enableFold` | `boolean` | `true` | 允许节点折叠/展开 |
 | `interactive` | `boolean` | `true` | 启用平移/缩放交互 |
 | `hoverHighlight` | `boolean` | `true` | 悬停高亮相关分支 |
+| `spouseFormat` | `'full' \| 'surname'` | `'full'` | 配偶文字格式：完整姓名 / 某氏（如「王芳」→「王氏」），仅影响展示 |
 
 ## Emits
 

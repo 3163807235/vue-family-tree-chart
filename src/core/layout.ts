@@ -14,10 +14,10 @@ const DEFAULT_DROP = HALF
  * 该常量在 layout、DefaultNode 两端保持一致，作为唯一可维护的边距来源。
  */
 const PADDING_V = 4
-/** 配偶横向步距（与渲染端 SP_W 一致） */
-const SP_W = 12
-/** 配偶竖文字体半宽 */
-const GLYPH = 5
+/** 配偶横向步距基准（与渲染端 DefaultNode.vue 一致）：随辅字号动态计算 */
+function spW(auxSize: number): number { return Math.max(12, auxSize + 2) }
+/** 配偶竖文字体半宽：随辅字号等比缩放 */
+function glyphHalf(auxSize: number): number { return Math.max(5, auxSize / 2) }
 /** 根节点起始 y */
 const BASE_Y = 60
 
@@ -32,9 +32,9 @@ function rankLabel(g: string, count: number): string {
 }
 
 /** 家庭单元内容宽（世界坐标 px）：卡 + 配偶列贴合 */
-function famWidth(n: { spouse?: string[] | null }): number {
+function famWidth(n: { spouse?: string[] | null }, auxSize: number): number {
   const spc = n.spouse ? n.spouse.length : 0
-  const R = spc ? HW + 6 + (spc - 1) * SP_W + GLYPH : HW
+  const R = spc ? HW + 6 + (spc - 1) * spW(auxSize) + glyphHalf(auxSize) : HW
   return HW + Math.max(HW, R)
 }
 
@@ -69,7 +69,8 @@ export function runLayout(
   gapX: number,
   gapY: number,
   collapsedArr: string[],
-  mainSize = 12
+  mainSize = 12,
+  auxSize = 10
 ): LayoutResult {
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0
 
@@ -140,7 +141,7 @@ export function runLayout(
       dropY: thisDrop
     })
 
-    const selfW = famWidth(n)
+    const selfW = famWidth(n, auxSize)
     // 本节点轮廓：相对深度 0 即卡片自身（左缘 -HW，右缘 -HW+selfW）
     const L: number[] = [-HW]
     const R: number[] = [-HW + selfW]
@@ -269,7 +270,7 @@ export function runLayout(
   for (let bi = 0; bi < nodes.length; bi++) {
     const nd = nodes[bi]
     const left = nd.x - HW
-    const right = nd.x - HW + famWidth(nd)
+    const right = nd.x - HW + famWidth(nd, auxSize)
     if (left < minX) minX = left
     if (right > maxX) maxX = right
   }
