@@ -1,0 +1,23 @@
+# 依赖
+node_modules
+
+# 构建产物
+dist
+out
+*.tsbuildinfo
+
+# 测试
+coverage
+
+# 日志
+*.log
+npm-debug.log*
+
+# 编辑器
+.vscode/
+.vite/
+.DS_Store
+
+# 打包临时
+*.tgz
+.tmp.*
