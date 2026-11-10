@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **装订线装订点功能**（`FamilyTreeBook` / `FamilyTreeVolume` 通用）：新增 `bindingType`（none / staple 骑马钉 / sewing 锁线装 / perfect 胶装）、`bindingOffset`（装订线距纸边距离，mm）、`stapleCount`（钉数 2–5）、`sewingHoles`（槽孔数 3–12）四项排版参数；引擎导出新函数 `normalizeBinding`（参数校验夹紧）与 `computeBindingOnSpine`（装订线几何计算），页面对象 `BookSpine.binding` 携带完整渲染数据，画布实时绘制装订虚线及钉点/槽孔标识，打印导出随页面矢量图形自然生效。
+- **装订线作用于纸张边缘，与版框/版心骨架无关**：`bindingOffset` 语义为「距纸张物理边缘向内的距离」，取值范围 0–15mm（负值会超出纸面、物理不可行，自动夹紧到 0）；`offset=0` 时装订线与纸张左右物理边缘精准重合。两条装订线对称分布于筒子页左右纸边（`lineXs = [offset×MM, pageWidth − offset×MM]`），对折后在书脊处完全重合，符合筒子页装订工艺；版框、乌丝栏、版心鱼尾、跨页拼接与叶码位置均不受装订参数影响。
+
 ## [1.3.0] - 2026-10-11
 
 ### 新增

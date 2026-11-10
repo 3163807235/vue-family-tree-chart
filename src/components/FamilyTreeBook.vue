@@ -28,9 +28,9 @@ interface Props {
   gridColWidth?: number
   /** 版心（书口）竖条宽度 */
   spineWidth?: number
-  /** 谱名（版心竖排大字，如"周氏家谱"） */
+  /** 谱名（版心竖排大字，如"测试家谱"） */
   title?: string
-  /** 书眉（右缘单格竖排小字，如"周氏世系简录"） */
+  /** 书眉（右缘单格竖排小字，如"测试世系简录"） */
   runningTitle?: string
 }
 
@@ -162,6 +162,30 @@ const genBadgeH = computed(() =>
                 :y1="page.frame.top + 5" :y2="page.frame.bottom - 5" />
           <line :x1="page.spine.right" :x2="page.spine.right"
                 :y1="page.frame.top + 5" :y2="page.frame.bottom - 5" />
+        </g>
+
+        <!-- ===== 装订线与装订标识（筒子页展平：左右半叶各一条装订线，对折后重合于书脊） ===== -->
+        <g v-if="page.spine.binding" class="ftc-book-binding">
+          <template v-for="(lineX, li) in page.spine.binding.lineXs" :key="'bl' + li">
+            <line
+              v-if="page.spine.binding.type !== 'perfect'"
+              :x1="lineX" :x2="lineX"
+              :y1="0" :y2="page.height"
+              stroke="#6b4a2a" stroke-width="1" stroke-dasharray="4 3" opacity="0.55" />
+            <g v-if="page.spine.binding.type === 'staple' && page.spine.binding.stapleY" fill="#2a1a08">
+              <circle v-for="(y, i) in page.spine.binding.stapleY" :key="'st' + li + i"
+                      :cx="lineX" :cy="y" r="2.5" />
+              <line v-for="(y, i) in page.spine.binding.stapleY" :key="'sw' + li + i"
+                    :x1="lineX - 6" :x2="lineX + 6"
+                    :y1="y" :y2="y" stroke="#2a1a08" stroke-width="1.2" />
+            </g>
+            <g v-if="page.spine.binding.type === 'sewing' && page.spine.binding.sewingY"
+               fill="#fffdf7" stroke="#2a1a08" stroke-width="0.8">
+              <rect v-for="(y, i) in page.spine.binding.sewingY" :key="'sh' + li + i"
+                    :x="lineX - 2" :y="y - 1.5"
+                    width="4" height="3" />
+            </g>
+          </template>
         </g>
 
         <!-- ===== 横格线：每人物格分三行（上格顶/底、中格底），全页 y 拉齐，按人物格宽画段线（留白格无横线）；

@@ -257,6 +257,9 @@ export interface BookRect {
   bottom: number
 }
 
+/** 装订类型：none 不显示 / staple 骑马钉（对折线上 2 钉点）/ sewing 锁线装订（一排槽孔+装订线）/ perfect 胶装（无装订线） */
+export type BindingType = 'none' | 'staple' | 'sewing' | 'perfect'
+
 /** 版心几何 */
 export interface BookSpine {
   /** 版心中线 x（书口折线、象鼻所在） */
@@ -270,6 +273,21 @@ export interface BookSpine {
   upperTailY: number
   /** 下鱼尾中心 y */
   lowerTailY: number
+  /** 装订线渲染数据（可选：未配置装订时为 null） */
+  binding?: {
+    type: BindingType
+    /** 装订线 x 坐标数组（px）：作用于纸张本身，锚定纸张物理边缘。
+     *  lineXs[0] = offsetMm×MM（左纸边向内）；
+     *  lineXs[1] = pageWidth − offsetMm×MM（右纸边向内）。
+     *  offset=0 时与纸张物理边缘精准重合；对折后两线在书脊处重合。 */
+    lineXs: number[]
+    /** 原始 mm 输入（装订线距纸张边缘向内的距离，0~15mm） */
+    offsetMm: number
+    /** 骑马钉钉点 y 坐标数组（staple 时） */
+    stapleY?: number[]
+    /** 锁线槽孔 y 坐标数组（sewing 时） */
+    sewingY?: number[]
+  }
 }
 
 /** 谱牒式排版输出 */
@@ -291,10 +309,18 @@ export interface BookLayoutOptions {
   bottomMargin?: number
   nameSize?: number
   bioSize?: number
-  /** 传文行距倍数（竖排换行时竖行间的左右间距），默认 1.15；行内上下字距固定 1.15 不受影响 */
+  /** 传文行距倍数（竖排换行时竖行间的左右间距），默认 1.15 */
   bioLineSpacing?: number
   /** @deprecated 已不生效：半叶十格自版框外缘至版心严格等分（书眉格即最右一格），格宽不再可配 */
   gridColWidth?: number
   /** 版心（书口）竖条宽度 */
   spineWidth?: number
+  /** 装订类型，默认 'none' */
+  bindingType?: BindingType
+  /** 装订线离书脊中心的偏移（mm）；正数偏右、负数偏左；物理装订可行范围 ±15mm；默认 0（对折线上） */
+  bindingOffset?: number
+  /** 骑马钉数量（2–5），默认 2 */
+  stapleCount?: number
+  /** 锁线槽孔数量（3–12），默认 6 */
+  sewingHoles?: number
 }

@@ -204,14 +204,45 @@ export function runBookLayout(root: FamilyNode, opts: BookLayoutOptions = {}): B
   }
   // 版心（书口）：页面正中竖条
   const centerX = pageWidth / 2
+  const spineLeft = centerX - spineWidth / 2
+  const spineRight = centerX + spineWidth / 2
+  const { type: bt, offsetMm: boff, stapleCount: bstap, sewingHoles: bsew } = (() => {
+    const valid = ['none', 'staple', 'sewing', 'perfect'] as const
+    const t: (typeof valid)[number] = opts.bindingType && (valid as readonly string[]).includes(opts.bindingType)
+      ? (opts.bindingType as (typeof valid)[number]) : 'none'
+    const off = opts.bindingOffset == null || Number.isNaN(opts.bindingOffset) ? 0 : Math.max(0, Math.min(15, opts.bindingOffset))
+    const stap = opts.stapleCount == null ? 2 : Math.max(2, Math.min(5, Math.round(opts.stapleCount)))
+    const sew = opts.sewingHoles == null ? 6 : Math.max(3, Math.min(12, Math.round(opts.sewingHoles)))
+    return { type: t, offsetMm: off, stapleCount: stap, sewingHoles: sew }
+  })()
+  const MM = 96 / 25.4
+  const binding = (() => {
+    if (bt === 'none' || bt === 'perfect') return undefined
+    // 装订线作用于纸张本身：锚定纸张物理边缘，offsetMm 为距纸边向内的距离；对折后两线重合于书脊
+    const lineXs = [boff * MM, pageWidth - boff * MM]
+    const top = frame.top + 20
+    const bottom = frame.bottom - 20
+    const span = bottom - top
+    if (bt === 'staple') {
+      const n = bstap
+      const ys: number[] = []
+      for (let i = 0; i < n; i++) ys.push(top + span * (i + 1) / (n + 1))
+      return { type: bt, lineXs, offsetMm: boff, stapleY: ys }
+    }
+    const n = bsew
+    const ys: number[] = []
+    for (let i = 0; i < n; i++) ys.push(top + span * (i + 0.5) / n)
+    return { type: bt, lineXs, offsetMm: boff, sewingY: ys }
+  })()
   const spine: BookSpine = {
     centerX,
-    left: centerX - spineWidth / 2,
-    right: centerX + spineWidth / 2,
+    left: spineLeft,
+    right: spineRight,
     width: spineWidth,
     // 鱼尾中心位于版心纵向 1/4、3/4 处（上下对称，组件将鱼尾几何居中于该线）
     upperTailY: frame.top + (frame.bottom - frame.top) * 0.25,
-    lowerTailY: frame.top + (frame.bottom - frame.top) * 0.75
+    lowerTailY: frame.top + (frame.bottom - frame.top) * 0.75,
+    binding
   }
 
   // 每半叶固定格列数（十列）；右半叶最右列为书眉格不排人，左半叶十列全开；传文格内向左换行所成竖行不计入此列数
