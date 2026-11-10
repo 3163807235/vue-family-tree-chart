@@ -440,7 +440,8 @@ export function paginateToc(entries: TocEntry[], ctx: RenderContext): RawPage[] 
  * 在「右边内容区」（frame.top ~ frame.bottom）内按黄金比 0.382:0.618 分配
  * 上下留白：上留白占 0.382、下留白占 0.618，使谱名靠上、题记靠下且整体不贴地脚。
  * 呼吸距严格 = titleH / φ（谱名高 : 间距 = 1 : 0.618）。
- * 堂号竖排于版框右上角、字号 titleSize / φ³（最弱层级）；
+ * 堂号竖排于谱名左侧（字号 titleSize / φ²，次弱层级），与谱名左缘留一个谱名字号的间隔，
+ * 且距版框上界亦留白，不贴上边；
  * 题记横排两行、横向居中于谱名中轴、字号 titleSize / φ³、自适应压缩不越版框右缘。
  */
 export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'): RawPage[] {
@@ -510,12 +511,16 @@ export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'):
     })
   }
 
-  // 堂号：版框右上角竖排小字（字号 titleSize / φ³，最弱层级）
-  const clanSize = titleSize / (PHI * PHI * PHI)
+  // 堂号：谱名左侧竖排小字（字号 titleSize / φ²，次弱层级）
+  // 横向：固定于 x = 100（纸张左上区，距版框左界 64 留 36px 余量）
+  // 纵向：自版框上界内缩 titleSize / φ 起排，与上边距留白不贴顶
+  const clanSize = titleSize / (PHI * PHI)
   const clanLineH = clanSize * 1.15
   const clanText = ctx.plan.clanName ?? ''
+  const clanTopPad = titleSize / PHI
+  const clanX = 900
   const clanChars = clanText
-    ? verticalRun(clanText, g.frame.right - clanSize * 0.9, g.frame.top + 8, clanLineH)
+    ? verticalRun(clanText, clanX, g.frame.top + clanTopPad, clanLineH)
     : []
 
   const content: CoverPageContent = {

@@ -158,6 +158,22 @@ describe('成册装配', () => {
     )
   })
 
+  it('筒子页左右半叶各编页码：右半奇数页、左半偶数页，前置页不编码', () => {
+    const result = assembleVolume(buildPlan())
+    const front = result.pages.filter(p => p.leafNumber === '')
+    for (const p of front) {
+      expect(p.pageNumberLeft).toBe('')
+      expect(p.pageNumberRight).toBe('')
+    }
+    const numbered = result.pages.filter(p => p.leafNumber !== '')
+    expect(numbered.length).toBeGreaterThan(0)
+    numbered.forEach((p, i) => {
+      // 第 n 叶 → 右半（正面）2n−1、左半（背面）2n
+      expect(p.pageNumberRight).toBe(toChineseNum(i * 2 + 1))
+      expect(p.pageNumberLeft).toBe(toChineseNum(i * 2 + 2))
+    })
+  })
+
   it('序文跨叶续排且文字无损', () => {
     const result = assembleVolume(buildPlan())
     const prefacePages = result.pages.filter(p => p.chapterId === 'preface')

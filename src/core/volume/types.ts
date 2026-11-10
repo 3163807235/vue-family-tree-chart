@@ -396,6 +396,10 @@ export interface VolumePage {
   leafIndex: number
   /** 叶码（中文数字）；封面/扉页等前置页为空串（书衣不编叶） */
   leafNumber: string
+  /** 左半叶页码（背面，偶数页，中文数字）；前置页为空串 */
+  pageNumberLeft: string
+  /** 右半叶页码（正面，奇数页，中文数字）；前置页为空串 */
+  pageNumberRight: string
   chapterId: string
   chapterKind: ChapterKind
   chapterTitle: string
@@ -423,7 +427,7 @@ export interface VolumePage {
 }
 
 /** 尚未编叶码的原始页（两遍法第一遍产出；页面物理尺寸在第二遍统一注入） */
-export type RawPage = Omit<VolumePage, 'leafIndex' | 'leafNumber' | 'pageWidth' | 'pageHeight'>
+export type RawPage = Omit<VolumePage, 'leafIndex' | 'leafNumber' | 'pageNumberLeft' | 'pageNumberRight' | 'pageWidth' | 'pageHeight'>
 
 /** 总目条目（卷级指向章节首叶，节级指向小节首叶） */
 export interface TocEntry {

@@ -80,6 +80,18 @@ function onTocClick(page: VolumePage) {
 const pageW = (page: VolumePage) => page.pageWidth
 const pageH = (page: VolumePage) => page.pageHeight
 
+/** 是否为封面页：整版题字，不绘版框与版心骨架，仅以虚线示意中缝 */
+const isCoverPage = (page: VolumePage) => page.cover?.mode === 'cover'
+
+/** 版框是否绘制：封面不设边框；扉页及正文各页照绘 */
+const hasFrame = (page: VolumePage) => !isCoverPage(page)
+
+/** 版心页码字号：按位数收缩，保证两栏各占半个版心宽而不越界 */
+const pageNoSize = (page: VolumePage) => {
+  const cols = Math.max(Array.from(page.pageNumberLeft).length, Array.from(page.pageNumberRight).length, 1)
+  return Math.min(16, (page.spine.width / 2 - 1.5) / cols)
+}
+
 /** 章节首叶叶序 */
 function leafOfChapter(chapterId: string): number {
   return result.value.chapterSpans.find(s => s.chapterId === chapterId)?.startLeaf ?? -1
@@ -120,26 +132,34 @@ function gridLines(page: VolumePage): number[] {
         xmlns="http://www.w3.org/2000/svg"
         class="ftc-volume-svg"
       >
-        <!-- ===== 版框（四周双边） ===== -->
-        <rect :x="page.frame.left" :y="page.frame.top"
-              :width="page.frame.right - page.frame.left"
-              :height="page.frame.bottom - page.frame.top"
-              fill="none" stroke="#1a1208" stroke-width="3.02" />
-        <rect :x="page.frame.left + 5" :y="page.frame.top + 5"
-              :width="page.frame.right - page.frame.left - 10"
-              :height="page.frame.bottom - page.frame.top - 10"
-              fill="none" stroke="#1a1208" stroke-width="1.51" />
+        <!-- ===== 版框（四周双边）：封面不绘，扉页及正文各页照绘 ===== -->
+        <g v-if="hasFrame(page)">
+          <rect :x="page.frame.left" :y="page.frame.top"
+                :width="page.frame.right - page.frame.left"
+                :height="page.frame.bottom - page.frame.top"
+                fill="none" stroke="#1a1208" stroke-width="3.02" />
+          <rect :x="page.frame.left + 5" :y="page.frame.top + 5"
+                :width="page.frame.right - page.frame.left - 10"
+                :height="page.frame.bottom - page.frame.top - 10"
+                fill="none" stroke="#1a1208" stroke-width="1.51" />
+        </g>
 
         <!-- ===== 乌丝栏竖界行 ===== -->
         <g v-if="page.gridXs.length" stroke="#1a1208" stroke-width="1.51" opacity="0.28">
           <line v-for="(x, i) in gridLines(page)" :key="'gx' + i"
                 :x1="x" :x2="x" :y1="page.frame.top + 5" :y2="page.frame.bottom - 5" />
         </g>
-        <!-- 版心两界：黑口实线（每页版心固有结构，与乌丝栏/gridXs 无关，封面扉页同样显示） -->
-        <g stroke="#1a1208" stroke-width="1.51">
+        <!-- 版心两界：黑口实线（每页版心固有结构，与乌丝栏/gridXs 无关；封面无版心，扉页照绘） -->
+        <g v-if="hasFrame(page)" stroke="#1a1208" stroke-width="1.51">
           <line :x1="page.spine.left" :x2="page.spine.left" :y1="page.frame.top + 5" :y2="page.frame.bottom - 5" />
           <line :x1="page.spine.right" :x2="page.spine.right" :y1="page.frame.top + 5" :y2="page.frame.bottom - 5" />
         </g>
+
+        <!-- ===== 封面虚线中线（对折中缝示意，替代封面上的版心骨架） ===== -->
+        <line v-if="isCoverPage(page)"
+              :x1="page.spine.centerX" :x2="page.spine.centerX"
+              :y1="0" :y2="pageH(page)"
+              stroke="#1a1208" stroke-width="1" stroke-dasharray="8 6" opacity="0.35" />
 
         <!-- ===== 装订线与装订标识（筒子页展平：左右半叶各一条装订线，对折后重合于书脊） ===== -->
         <g v-if="page.spine.binding" class="ftc-volume-binding">
@@ -178,8 +198,8 @@ function gridLines(page: VolumePage): number[] {
           </template>
         </g>
 
-        <!-- ===== 版心：书名、鱼尾、叶码 ===== -->
-        <g class="ftc-volume-spine">
+        <!-- ===== 版心：书名、鱼尾、叶码（封面无版心） ===== -->
+        <g v-if="hasFrame(page)" class="ftc-volume-spine">
           <text text-anchor="middle" :style="{ fontSize: '29.33px', fill: '#1a1208', fontWeight: 600 }">
             <tspan v-for="(c, i) in spineTitle" :key="'st' + i" :x="page.spine.centerX" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
@@ -197,8 +217,14 @@ function gridLines(page: VolumePage): number[] {
                      :transform="`translate(${-page.spine.width / 2}, ${-(page.spine.width * 0.6876) / 2}) scale(${page.spine.width / 45.35})`"
                      fill="#1a1208" />
           </g>
-          <text v-if="page.leafNumber" :x="page.spine.centerX" :y="page.spine.lowerTailY + 40"
-                text-anchor="middle" style="font-size: 14px; fill: #1a1208;">{{ page.leafNumber }}</text>
+        </g>
+
+        <!-- ===== 页码（版心原位分栏：左半叶偶数页居左栏、右半叶奇数页居右栏） ===== -->
+        <g v-if="page.pageNumberLeft" class="ftc-volume-pageno">
+          <text :x="page.spine.centerX - page.spine.width / 4" :y="page.spine.lowerTailY + 40"
+                text-anchor="middle" :style="{ fontSize: pageNoSize(page) + 'px', fill: '#1a1208' }">{{ page.pageNumberLeft }}</text>
+          <text :x="page.spine.centerX + page.spine.width / 4" :y="page.spine.lowerTailY + 40"
+                text-anchor="middle" :style="{ fontSize: pageNoSize(page) + 'px', fill: '#1a1208' }">{{ page.pageNumberRight }}</text>
         </g>
 
         <!-- ===== 书眉（天头） ===== -->

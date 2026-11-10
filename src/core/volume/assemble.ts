@@ -373,8 +373,11 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
     const front = isFront(ch)
     for (const rp of raw) {
       const leafNumber = front ? '' : toChineseNum(disp + 1)
+      // 筒子页两半叶各编页码（一叶两页）：右半叶为正面＝奇数页，左半叶为背面＝偶数页
+      const pageNumberRight = front ? '' : toChineseNum(disp * 2 + 1)
+      const pageNumberLeft = front ? '' : toChineseNum(disp * 2 + 2)
       if (!front) disp += 1
-      pages.push({ ...rp, pageWidth: setup.pageWidth, pageHeight: setup.pageHeight, leafIndex: leafIdx, leafNumber })
+      pages.push({ ...rp, pageWidth: setup.pageWidth, pageHeight: setup.pageHeight, leafIndex: leafIdx, leafNumber, pageNumberLeft, pageNumberRight })
       leafIdx += 1
     }
   }
