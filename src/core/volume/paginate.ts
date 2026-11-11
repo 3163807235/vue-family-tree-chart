@@ -32,6 +32,9 @@ export const HALF_COLS = 10
 /** 与版框外缘重合的格点不画（由内栏竖线充任界行） */
 const FRAME_INSET = 5
 
+/** 竖排文字距版框上下的留白：避开内外两道墨线（内栏线在 +5），字头字脚不压线 */
+const TEXT_PAD_Y = 10
+
 const CN_DIGITS = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九']
 const CN_UNITS = ['', '十', '百', '千']
 
@@ -254,8 +257,8 @@ export function paginateVerticalText(blocks: VerticalTextBlock[], ctx: RenderCon
   const headingLineH = headingSize * 1.15
   const subSize = headingSize * 0.72
   const subLineH = subSize * 1.15
-  const topY = g.frame.top
-  const bottomY = g.frame.bottom
+  const topY = g.frame.top + TEXT_PAD_Y
+  const bottomY = g.frame.bottom - TEXT_PAD_Y
   const height = bottomY - topY
 
   const headFromBlocks = blocks.length > 0 && blocks[0].kind === 'heading'
@@ -381,8 +384,8 @@ function tocSlots(leafOffset: number): number {
 export function paginateToc(entries: TocEntry[], ctx: RenderContext): RawPage[] {
   const g = ctx.geometry
   const baseSize = ctx.fonts.headingSize * 0.62
-  const topY = g.frame.top
-  const height = g.frame.bottom - g.frame.top
+  const topY = g.frame.top + TEXT_PAD_Y
+  const height = g.frame.bottom - g.frame.top - TEXT_PAD_Y * 2
   const pages: RawPage[] = []
   let cursor = 0
   let leafOffset = 0

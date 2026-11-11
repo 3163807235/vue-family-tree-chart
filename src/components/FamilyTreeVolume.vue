@@ -47,10 +47,13 @@ const genBadgeH = computed(
 )
 const genBadgeRadius = computed(() => Math.min(regStyle.value.nameSize * 0.35, genBadgeW.value / 2 - 0.5))
 
+/** 版心书名字号（字距随字号联动） */
+const SPINE_TITLE_SIZE = 50
+
 /** 版心书名（竖排，位于内栏顶至鱼尾之间） */
 const spineTitle = computed(() => {
-  const size = 29.33
-  const lh = size * 1.15
+  const size = SPINE_TITLE_SIZE
+  const lh = size * 1
   const top = (result.value.pages[0]?.frame.top ?? 0) + 40
   return Array.from(props.plan.title || '').map((ch, i) => ({ ch, y: top + i * lh }))
 })
@@ -86,10 +89,22 @@ const isCoverPage = (page: VolumePage) => page.cover?.mode === 'cover'
 /** 版框是否绘制：封面不设边框；扉页及正文各页照绘 */
 const hasFrame = (page: VolumePage) => !isCoverPage(page)
 
-/** 版心页码字号：按位数收缩，保证两栏各占半个版心宽而不越界 */
-const pageNoSize = (page: VolumePage) => {
-  const cols = Math.max(Array.from(page.pageNumberLeft).length, Array.from(page.pageNumberRight).length, 1)
-  return Math.min(16, (page.spine.width / 2 - 1.5) / cols)
+/** 版心页码：竖排定字号 18px，逐字下排（行距 1.15×字号） */
+const PAGE_NO_SIZE = 18
+const PAGE_NO_LINE_H = PAGE_NO_SIZE * 1.15
+const PAGE_NO_SIDES: Array<'left' | 'right'> = ['left', 'right']
+
+/** 取某一侧半叶的页码字列：左栏居版心左半，右栏居版心右半，自下鱼尾下方逐字下排 */
+const pageNoChars = (page: VolumePage, side: 'left' | 'right') => {
+  const text = side === 'left' ? page.pageNumberLeft : page.pageNumberRight
+  const x = side === 'left'
+    ? page.spine.centerX - page.spine.width / 4
+    : page.spine.centerX + page.spine.width / 4
+  return Array.from(text).map((ch, i) => ({
+    ch,
+    x,
+    y: page.spine.lowerTailY + 40 + PAGE_NO_LINE_H * (i + 0.5)
+  }))
 }
 
 /** 章节首叶叶序 */
@@ -200,7 +215,7 @@ function gridLines(page: VolumePage): number[] {
 
         <!-- ===== 版心：书名、鱼尾、叶码（封面无版心） ===== -->
         <g v-if="hasFrame(page)" class="ftc-volume-spine">
-          <text text-anchor="middle" :style="{ fontSize: '29.33px', fill: '#1a1208', fontWeight: 600 }">
+          <text text-anchor="middle" :style="{ fontSize: SPINE_TITLE_SIZE + 'px', fill: '#1a1208', fontWeight: 600 }">
             <tspan v-for="(c, i) in spineTitle" :key="'st' + i" :x="page.spine.centerX" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <g :transform="`translate(${page.spine.centerX}, ${page.spine.upperTailY})`">
@@ -219,12 +234,13 @@ function gridLines(page: VolumePage): number[] {
           </g>
         </g>
 
-        <!-- ===== 页码（版心原位分栏：左半叶偶数页居左栏、右半叶奇数页居右栏） ===== -->
+        <!-- ===== 页码（版心原位竖排分栏：左栏偶数页、右栏奇数页，字号统一 18px） ===== -->
         <g v-if="page.pageNumberLeft" class="ftc-volume-pageno">
-          <text :x="page.spine.centerX - page.spine.width / 4" :y="page.spine.lowerTailY + 40"
-                text-anchor="middle" :style="{ fontSize: pageNoSize(page) + 'px', fill: '#1a1208' }">{{ page.pageNumberLeft }}</text>
-          <text :x="page.spine.centerX + page.spine.width / 4" :y="page.spine.lowerTailY + 40"
-                text-anchor="middle" :style="{ fontSize: pageNoSize(page) + 'px', fill: '#1a1208' }">{{ page.pageNumberRight }}</text>
+          <text v-for="side in PAGE_NO_SIDES" :key="side" text-anchor="middle"
+                :style="{ fontSize: PAGE_NO_SIZE + 'px', fill: '#1a1208' }">
+            <tspan v-for="(c, i) in pageNoChars(page, side)" :key="side + i"
+                   :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+          </text>
         </g>
 
         <!-- ===== 书眉（天头） ===== -->
@@ -317,6 +333,13 @@ function gridLines(page: VolumePage): number[] {
 
         <!-- ===== 世系录（牒记式，复用 BookPage 数据） ===== -->
         <g v-else-if="page.register" class="ftc-volume-register">
+          <!-- 书眉格：章首叶最外一列竖排章名（引擎首叶右半叶留 9 轨，此格专用，与 FamilyTreeBook 书眉一致） -->
+          <text v-if="page.register.hasHeader && page.runningTitle" text-anchor="middle"
+                :style="{ fontSize: '34.67px', fill: '#3a2a1a', fontWeight: 600 }">
+            <tspan v-for="(ch, i) in Array.from(page.runningTitle)" :key="'rh' + i"
+                   :x="page.frame.right - halfColW / 2"
+                   :y="page.frame.top + 36 + i * 42">{{ ch }}</tspan>
+          </text>
           <g v-for="(bp, pi) in page.register.genLabels" :key="'gen' + pi" class="ftc-volume-genlabel">
             <rect :x="bp.chars[0].x - genBadgeW / 2"
                   :y="(page.frame.top + page.frame.bottom) / 2 - genBadgeH / 2"
