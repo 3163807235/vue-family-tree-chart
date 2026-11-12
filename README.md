@@ -1,4 +1,4 @@
-# vue-family-tree-chart
+# family-tree-chart
 
 面向家谱场景的「宝塔吊线图」Vue 3 组件：基于 WebWorker 布局计算 + SVG 视口虚拟渲染，支持万级节点流畅交互、拖拽缩放、节点折叠、悬停分支高亮。
 
@@ -13,7 +13,7 @@
 ## 安装
 
 ```bash
-npm install vue-family-tree-chart
+npm install family-tree-chart
 ```
 
 ## 快速开始
@@ -21,9 +21,9 @@ npm install vue-family-tree-chart
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { FamilyTreeChart } from 'vue-family-tree-chart'
-import 'vue-family-tree-chart/style.css'
-import type { FamilyNode } from 'vue-family-tree-chart'
+import { FamilyTreeChart } from 'family-tree-chart'
+import 'family-tree-chart/style.css'
+import type { FamilyNode } from 'family-tree-chart'
 
 const data = ref<FamilyNode>({
   id: 'root',
@@ -117,9 +117,9 @@ onMounted(() => chart.value.fitView())
 
 ```vue
 <script setup lang="ts">
-import { FamilyTreeBook } from 'vue-family-tree-chart'
-import 'vue-family-tree-chart/style.css'
-import type { FamilyNode } from 'vue-family-tree-chart'
+import { FamilyTreeBook } from 'family-tree-chart'
+import 'family-tree-chart/style.css'
+import type { FamilyNode } from 'family-tree-chart'
 
 const data: FamilyNode = { id: 'root', name: '周邦', gender: 'm', children: [] }
 </script>
@@ -153,8 +153,8 @@ const data: FamilyNode = { id: 'root', name: '周邦', gender: 'm', children: []
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue'
-import { FamilyTreeVolume, createVolumePlan } from 'vue-family-tree-chart'
-import 'vue-family-tree-chart/style.css'
+import { FamilyTreeVolume, createVolumePlan } from 'family-tree-chart'
+import 'family-tree-chart/style.css'
 
 const plan = ref(createVolumePlan({
   title: '周氏宗谱',
@@ -185,7 +185,7 @@ const plan = ref(createVolumePlan({
 ## 主题（CSS 变量）
 
 ```css
-.vue-family-tree-chart-container {
+.family-tree-chart-container {
   --ftc-bg: #FCF7EC;          /* 背景 */
   --ftc-text-color: #4A3222;  /* 正文/节点文字 */
   --ftc-edge-color: #A97F4F;  /* 连线 */

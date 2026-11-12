@@ -440,7 +440,7 @@ function toggleRootFold() {
 
 <template>
   <div class="page">
-    <h2>vue-family-tree-chart 本地验证</h2>
+    <h2>family-tree-chart 本地验证</h2>
 
     <div class="panel">
       <!-- 视图切换：常驻显示，不受视图模式影响 -->

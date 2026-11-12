@@ -6,6 +6,7 @@
 
 ### 变更
 
+- **包名迁移**：项目自本版起以 `family-tree-chart` 名称发布，`npm install family-tree-chart`，导入路径同步为 `family-tree-chart` / `family-tree-chart/style.css`；旧包 `vue-family-tree-chart` 停止更新，已安装旧包的项目可继续使用既有版本或迁移至新包名。
 - **许可证改为非商业**：由 MIT 改为 **PolyForm Noncommercial License 1.0.0**（见 `LICENSE`），仅限非商业用途。个人学习、研究、实验、兴趣项目以及教学/科研/慈善/公共机构可自由使用、修改与分发（须保留许可声明）；任何商业目的使用需另行取得授权（3163807235@qq.com）。`package.json` 的 `license` 字段改为 `SEE LICENSE IN LICENSE`，`LICENSE` 纳入发布文件白名单。v1.3.0 及更早版本按 MIT 发布，其授权不可撤销。
 
 ## [1.4.0] - 2026-11-12
