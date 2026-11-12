@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { FamilyTreeChart, FamilyTreeBook, FamilyTreeVolume, createVolumePlan } from '../src'
 import type { FamilyNode, Direction, TextStyle, SpouseFormat } from '../src/core/types'
 
@@ -165,7 +165,9 @@ const volumePlan = computed(() =>
     compiler: '二十三世孙：维城 主修',
     compileDate: '公元二〇二六年孟冬',
     tree: bookData.value,
-    fonts: { bodySize: 18.67, headingSize: 34.67 },
+    // =====bodySize: 28是控制正文字体大小，headingSize: 40是控制章节标题的字体大小
+    fonts: { bodySize: 40, headingSize: 40 },
+    punct: { enable: volumeEnablePunct.value, color: volumePunctColor.value },
     pageSetup: {
       bindingType: bindingType.value,
       bindingOffset: bindingOffset.value,
@@ -377,6 +379,49 @@ const bookNameWeight = computed(() =>
   FONT_FAMILIES.find(f => f.value === bookNameFont.value)?.weight ?? 'bold'
 )
 
+// ===== 句读（标点）控制 =====
+// 句读开关 + 颜色做成气泡选项：开启时句读点（，。、．）沉到前字右下角、不独占字格；
+// 关闭时标点居中占格（传统排版）。颜色为空则随正文墨色。
+const bookEnablePunct = ref(true)
+const bookPunctColor = ref('#9c2b2b') // 朱砂红
+const volumeEnablePunct = ref(true)
+const volumePunctColor = ref('#9c2b2b')
+// 气泡开关（book / volume 两组共用同一状态，因视图互斥）
+const punctPopOpen = ref(false)
+function togglePunctPop() { punctPopOpen.value = !punctPopOpen.value }
+// 点击气泡外部关闭
+function onDocClick(e: MouseEvent) {
+  const el = (e.target as HTMLElement)?.closest('.punct-pop-wrap')
+  if (!el) punctPopOpen.value = false
+}
+onMounted(() => document.addEventListener('click', onDocClick))
+onUnmounted(() => document.removeEventListener('click', onDocClick))
+
+// 预设句读颜色（传统批点色）
+const PUNCT_COLORS = [
+  { label: '随正文', value: '' },
+  { label: '朱砂', value: '#9c2b2b' },
+  { label: '赭石', value: '#a0522d' },
+  { label: '墨青', value: '#1f4e79' },
+  { label: '松绿', value: '#2e7d57' }
+]
+// 当前视图对应的句读开关/颜色
+const curEnablePunct = computed(() =>
+  viewMode.value === 'book' ? bookEnablePunct.value : volumeEnablePunct.value
+)
+const curPunctColor = computed(() =>
+  viewMode.value === 'book' ? bookPunctColor.value : volumePunctColor.value
+)
+function toggleCurEnable() {
+  if (viewMode.value === 'book') bookEnablePunct.value = !bookEnablePunct.value
+  else volumeEnablePunct.value = !volumeEnablePunct.value
+}
+function setCurColor(v: string) {
+  if (viewMode.value === 'book') bookPunctColor.value = v
+  else volumePunctColor.value = v
+}
+function onCurColorInput(e: Event) { setCurColor((e.target as HTMLInputElement).value) }
+
 // 步进辅助：范围限制
 function clamp(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, Math.round(v)))
@@ -471,6 +516,25 @@ function toggleRootFold() {
               <option v-for="f in FONT_FAMILIES" :key="f.label" :value="f.value">{{ f.label }}</option>
             </select>
           </label>
+          <span class="ctl punct-pop-wrap">
+            <button class="tg" :class="{ on: curEnablePunct }" @click.stop="togglePunctPop">句读</button>
+            <div v-if="punctPopOpen" class="punct-pop" @click.stop>
+              <label class="pop-row">
+                <span>句读排版</span>
+                <button class="sw" :class="{ on: curEnablePunct }" @click="toggleCurEnable"><i></i></button>
+              </label>
+              <label class="pop-row">
+                <span>句读颜色</span>
+                <input type="color" :value="curPunctColor || '#9c2b2b'" @input="onCurColorInput" />
+              </label>
+              <div class="pop-swatches">
+                <button v-for="c in PUNCT_COLORS" :key="c.label" class="swatch"
+                        :class="{ active: curPunctColor === c.value }"
+                        :style="{ background: c.value || 'repeating-linear-gradient(45deg,#bbb 0 4px,#fff 4px 8px)' }"
+                        @click="setCurColor(c.value)" :title="c.label">{{ c.label }}</button>
+              </div>
+            </div>
+          </span>
         </span>
 
         <!-- 成册视图专用控制组 -->
@@ -497,6 +561,25 @@ function toggleRootFold() {
           <span class="ctl" v-if="bindingType === 'sewing'">
             槽孔
             <input type="number" min="3" max="12" step="1" v-model.number="sewingHoles" style="width:48px">
+          </span>
+          <span class="ctl punct-pop-wrap">
+            <button class="tg" :class="{ on: curEnablePunct }" @click.stop="togglePunctPop">句读</button>
+            <div v-if="punctPopOpen" class="punct-pop" @click.stop>
+              <label class="pop-row">
+                <span>句读排版</span>
+                <button class="sw" :class="{ on: curEnablePunct }" @click="toggleCurEnable"><i></i></button>
+              </label>
+              <label class="pop-row">
+                <span>句读颜色</span>
+                <input type="color" :value="curPunctColor || '#9c2b2b'" @input="onCurColorInput" />
+              </label>
+              <div class="pop-swatches">
+                <button v-for="c in PUNCT_COLORS" :key="c.label" class="swatch"
+                        :class="{ active: curPunctColor === c.value }"
+                        :style="{ background: c.value || 'repeating-linear-gradient(45deg,#bbb 0 4px,#fff 4px 8px)' }"
+                        @click="setCurColor(c.value)" :title="c.label">{{ c.label }}</button>
+              </div>
+            </div>
           </span>
         </span>
       </Transition>
@@ -525,7 +608,8 @@ function toggleRootFold() {
                       :name-size="bookNameSize" :bio-size="bookBioSize"
                       :bio-line-spacing="bookBioLh"
                       :name-font-family="bookNameFont" :bio-font-family="bookBioFont"
-                      :name-font-weight="bookNameWeight" />
+                      :name-font-weight="bookNameWeight"
+                      :enable-punct="bookEnablePunct" :punct-color="bookPunctColor" />
     </div>
     <div class="book-wrap" v-else>
       <FamilyTreeVolume :plan="volumePlan" @navigate="onVolumeNavigate" />
@@ -558,4 +642,33 @@ html, body { margin: 0; height: 100%; font-family: sans-serif; }
 .ctl-fade-enter-from, .ctl-fade-leave-to { opacity: 0; transform: translateY(-4px); }
 .chart-wrap { flex: 1; min-height: 0; }
 .book-wrap { flex: 1; min-height: 0; overflow: auto; }
+
+/* ===== 句读气泡选项 ===== */
+.punct-pop-wrap { position: relative; }
+.punct-pop-wrap .tg.on { background: #9C3E28; color: #FFF4E0; border-color: #7E2F1F; }
+.punct-pop {
+  position: absolute; z-index: 50; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  min-width: 200px; padding: 10px 12px; background: #FFFDF7;
+  border: 1px solid #D8B48A; border-radius: 8px; box-shadow: 0 6px 18px rgba(90,70,50,.22);
+}
+/* 气泡尖角 */
+.punct-pop::before {
+  content: ''; position: absolute; top: -7px; left: 50%; transform: translateX(-50%);
+  border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 7px solid #D8B48A;
+}
+.punct-pop::after {
+  content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
+  border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 6px solid #FFFDF7;
+}
+.pop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #5A4632; margin-bottom: 8px; }
+.pop-row:last-child { margin-bottom: 0; }
+/* 开关滑块 */
+.sw { position: relative; width: 36px; height: 20px; padding: 0; border: 1px solid #D8B48A; border-radius: 10px; background: #EFE3D0; cursor: pointer; transition: background .15s; }
+.sw i { position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 50%; background: #FFF; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+.sw.on { background: #9C3E28; border-color: #7E2F1F; }
+.sw.on i { transform: translateX(16px); }
+.pop-row input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid #D8B48A; border-radius: 4px; background: #FFF; cursor: pointer; }
+.pop-swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #E0CDB4; }
+.swatch { width: 26px; height: 22px; padding: 0; border: 1px solid #D8B48A; border-radius: 4px; font-size: 10px; color: #3a2a1a; cursor: pointer; line-height: 20px; text-align: center; }
+.swatch.active { outline: 2px solid #9C3E28; outline-offset: 1px; }
 </style>

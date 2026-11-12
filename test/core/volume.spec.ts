@@ -12,7 +12,7 @@ import {
   removeChapter,
   setChapterEnabled
 } from '../../src/core/volume/registry'
-import { normalizeBinding, computeBindingOnSpine, toChineseNum, computeVolumeGeometry } from '../../src/core/volume/paginate'
+import { normalizeBinding, computeBindingOnSpine, toChineseNum, computeVolumeGeometry, tocLeafCount } from '../../src/core/volume/paginate'
 
 const tree: FamilyNode = {
   id: 'a',
@@ -256,6 +256,188 @@ function chainTree(depth: number): FamilyNode {
   return leaf
 }
 
+describe('正文标点句读', () => {
+  /** 密集标点样文：连续标点、各类型标点、长短混排各一 */
+  const denseText = '家之有谱，犹国之有史；谱之不修，则昭穆失序、亲疏混淆！'
+    + '「慎终追远」，民德归厚矣。……——（凡例）《宗谱》数十万言，'
+    + '“生卒失考”者，阙如也可，。'
+
+  const buildPunctPlan = (bodySize?: number) =>
+    createVolumePlan({
+      title: '测试宗谱',
+      clanName: '汝南堂',
+      tree,
+      ...(bodySize ? { fonts: { bodySize, headingSize: bodySize * 1.85 } } : {}),
+      chapters: [
+        {
+          id: 'preface',
+          kind: 'preface',
+          title: '序',
+          content: {
+            type: 'text',
+            blocks: [
+              { kind: 'heading', text: '序' },
+              { kind: 'paragraph', text: denseText }
+            ]
+          }
+        }
+      ]
+    })
+
+  const PUNCT = new Set(Array.from('，。、；：！？…—「」『』（）《》“”'))
+
+  /** 句读点：墨迹小，须沉到前字右下角 */
+  const SINK = new Set(Array.from('，。、'))
+
+  const bodyColumns = (bodySize?: number) => {
+    const result = assembleVolume(buildPunctPlan(bodySize))
+    return result.pages
+      .filter(p => p.chapterId === 'preface')
+      .flatMap(p => p.text?.columns ?? [])
+  }
+
+  /** 取非列首的某标点（列首标点无前字可依，不移位） */
+  const findPunct = (cols: ReturnType<typeof bodyColumns>, target: string) => {
+    for (const col of cols) {
+      for (let i = 1; i < col.chars.length; i++) {
+        if (col.chars[i].ch === target) return col.chars[i]
+      }
+    }
+    throw new Error(`未找到标点 ${target}`)
+  }
+
+  it('标点与正文同号；句读点右移上抬至前字右下角，其余标点居中', () => {
+    const bodySize = 18.67
+    const cols = bodyColumns()
+    expect(cols.flatMap(c => c.chars).length).toBe(Array.from(denseText).length) // 全量入栏，标点不额外占格
+    for (const col of cols) {
+      col.chars.forEach((c, i) => {
+        if (!PUNCT.has(c.ch)) {
+          expect(c.dx, c.ch).toBeUndefined()
+          expect(c.dy, c.ch).toBeUndefined()
+          expect(c.size, c.ch).toBeUndefined()
+          return
+        }
+        // 与正文同号，不缩号
+        expect(c.size, c.ch).toBeCloseTo(bodySize, 1)
+        if (i === 0) {
+          // 列首标点无前字可依，留在格中
+          expect(c.dx, c.ch).toBeUndefined()
+          expect(c.dy, c.ch).toBeUndefined()
+        } else if (SINK.has(c.ch)) {
+          expect(c.dx, c.ch).toBeCloseTo(bodySize * 0.97, 1) // 右移 0.97 字身，落到字列右缘空白带
+          expect(c.dy, c.ch).toBeCloseTo(bodySize * -1.015, 1) // 上抬 1.015 字身，墨迹收在前字右下角格内
+        } else {
+          // 括号、引号、破折号等占满字格，居中占位
+          expect(c.dx, c.ch).toBeUndefined()
+          expect(c.dy, c.ch).toBeUndefined()
+        }
+      })
+    }
+  })
+
+  it('标点墨迹落在前字右下角：横向避开笔画，纵向不越出字格下缘', () => {
+    const bodySize = 18.67
+    // 汉字墨迹近满格；句读点墨迹居于字身左下部（与引擎同一假设）
+    const HANZI_HALF = 0.45
+    const P_INK = { cx: 0.25, cy: 0.72, half: 0.175 }
+    // 字格下缘距字心 = 行高 / 2（行高 1.15 字身）
+    const CELL_BOTTOM = 0.575
+    for (const col of bodyColumns()) {
+      const chars = col.chars
+      for (let i = 1; i < chars.length; i++) {
+        const c = chars[i]
+        if (!SINK.has(c.ch)) continue
+        const s = c.size ?? bodySize
+        const emTop = c.y + (c.dy ?? 0) - s / 2
+        const emLeft = c.x + (c.dx ?? 0) - s / 2
+        const inkLeft = emLeft + P_INK.cx * s - P_INK.half * s
+        const inkTop = emTop + P_INK.cy * s - P_INK.half * s
+        const inkBottom = emTop + P_INK.cy * s + P_INK.half * s
+        const prev = chars[i - 1]
+        if (!PUNCT.has(prev.ch)) {
+          const prevRight = prev.x + (prev.dx ?? 0) + (prev.size ?? bodySize) * HANZI_HALF
+          // 横向落在字列右缘之外：墨迹整体避开字身笔画
+          expect(inkLeft, c.ch).toBeGreaterThan(prevRight - s * 0.02)
+          // 纵向沉到前字右下部，但墨迹下缘仍在字格之内（不越界栏）
+          expect(inkTop, c.ch).toBeGreaterThan(prev.y)
+          expect(inkBottom, c.ch).toBeLessThanOrEqual(prev.y + s * CELL_BOTTOM + 0.01)
+        }
+      }
+    }
+  })
+
+  it('列末句读点不越出版框下缘', () => {
+    const bodySize = 18.67
+    const P_INK = { cy: 0.72, half: 0.175 }
+    const result = assembleVolume(buildPunctPlan())
+    const pages = result.pages.filter(p => p.chapterId === 'preface')
+    let checked = 0
+    for (const page of pages) {
+      const frameBottom = page.frame.bottom
+      for (const col of page.text?.columns ?? []) {
+        for (const c of col.chars) {
+          if (!SINK.has(c.ch)) continue
+          const s = c.size ?? bodySize
+          // 墨迹下缘 = 排字 y + dy + 字身内墨迹下缘
+          const inkBottom = c.y + (c.dy ?? 0) + P_INK.cy * s + P_INK.half * s
+          // 正文留白 TEXT_PAD_Y=10，故墨迹下缘须在版框下缘之上
+          expect(inkBottom, c.ch).toBeLessThanOrEqual(frameBottom - 10 + 0.01)
+          checked += 1
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  it('句读点不占竖排字位：前后两字仍以正常行距相接', () => {
+    const bodySize = 18.67
+    const lineH = bodySize * 1.15
+    const chars = bodyColumns().flatMap(c => c.chars)
+    // 样文「家之有谱，犹国之有史」：谱、犹之间夹一句读点
+    const i = chars.findIndex((c, j) => c.ch === '，' && chars[j - 1]?.ch === '谱' && chars[j + 1]?.ch === '犹')
+    expect(i).toBeGreaterThan(0)
+    // 谱 → 犹 仅隔一个行高（句读点不占格，不再空出一格）
+    expect(chars[i + 1].y - chars[i - 1].y).toBeCloseTo(lineH, 1)
+    // 句读点借用前字下一格的虚位（故 y 仍在谱之下一个行高处），靠字形偏移落到右下角
+    expect(chars[i].y - chars[i - 1].y).toBeCloseTo(lineH, 1)
+  })
+
+  it('连续句读点依次下错、互不叠合，且不推进字位', () => {
+    const bodySize = 18.67
+    const lineH = bodySize * 1.15
+    const chars = bodyColumns().flatMap(c => c.chars)
+    const start = chars.findIndex((c, i) => c.ch === '，' && chars[i + 1]?.ch === '。')
+    expect(start).toBeGreaterThan(0)
+    const run = chars.slice(start, start + 2) // 「，。」
+    expect(run.map(c => c.ch).join('')).toBe('，。')
+    // 同一列同一虚位，第二点下错 0.3 行高，互不叠合
+    expect(run[1].x - run[0].x).toBeCloseTo(0, 5)
+    expect(run[1].y - run[0].y).toBeCloseTo(lineH * 0.3, 1)
+  })
+
+  it('不同字号下偏移等比缩放，位置关系不变', () => {
+    const small = findPunct(bodyColumns(20), '，')
+    const big = findPunct(bodyColumns(36), '，')
+    expect(big.dx! / small.dx!).toBeCloseTo(36 / 20, 2)
+    expect(big.dy! / small.dy!).toBeCloseTo(36 / 20, 2)
+    expect(big.size! / small.size!).toBeCloseTo(36 / 20, 2)
+  })
+
+  it('不影响原有分行：占格字行距恒定、同列同一中轴', () => {
+    const bodySize = 18.67
+    const lineH = bodySize * 1.15
+    for (const col of bodyColumns()) {
+      // 句读点不占字位，滤去后其余字（含括号、引号等占格标点）应逐格相接
+      const cols = col.chars.filter(c => !SINK.has(c.ch))
+      for (let i = 1; i < cols.length; i++) {
+        expect(cols[i].x).toBeCloseTo(cols[0].x, 5) // 同列同一中轴
+        expect(cols[i].y - cols[i - 1].y).toBeCloseTo(lineH, 1) // 行距恒定（字位坐标取两位小数，允许舍入余差）
+      }
+    }
+  })
+})
+
 describe('世系图分幅', () => {
   it('超幅大树按代分幅续叶，节点不丢失且人物索引记首幅叶码', () => {
     const root = chainTree(9)
@@ -373,6 +555,57 @@ describe('多级总目', () => {
     expect(node.children.map(c => c.entry.title)).toEqual(['维城', '附记'])
     // 锚点匹配到传主小节，指向传记章首叶（该章仅一叶）
     expect(node.children[0].entry.leafIndex).toBe(node.entry.leafIndex)
+  })
+})
+
+// ===== 总目四十格版式（左右半叶各二十格）：无界行、标题在上、页码齐底、虚线相接 =====
+describe('总目四十格版式', () => {
+  it('总目页隐藏全部列分隔线（gridXs 为空）', () => {
+    const result = assembleVolume(buildPlan())
+    const tocPages = result.pages.filter(p => p.toc)
+    expect(tocPages.length).toBeGreaterThan(0)
+    expect(tocPages.every(p => p.gridXs.length === 0)).toBe(true)
+  })
+
+  it('每条目标题在上、页码齐底、虚线贯穿其间', () => {
+    const result = assembleVolume(buildPlan())
+    const entries = result.pages.filter(p => p.toc).flatMap(p => p.toc!.entries)
+    expect(entries.length).toBeGreaterThan(0)
+    const bottoms = new Set<number>()
+    for (const e of entries) {
+      expect(e.chars.length).toBeGreaterThan(0)
+      expect(e.pageNoChars.length).toBe(e.leafNumber.length)
+      // 虚线：标题末字之下、页码首字之上，且方向自上而下
+      expect(e.leader).not.toBeNull()
+      expect(e.leader!.y1).toBeGreaterThan(e.chars[e.chars.length - 1].y)
+      expect(e.leader!.y1).toBeLessThan(e.leader!.y2)
+      expect(e.leader!.y2).toBeLessThan(e.pageNoChars[0].y)
+      // 页码墨迹下缘齐版框下界（各级条目字号不同亦对齐）
+      const pageBottom = e.pageNoChars[e.pageNoChars.length - 1].y + e.size / 2
+      bottoms.add(Math.round(pageBottom * 100) / 100)
+    }
+    expect(bottoms.size).toBe(1)
+  })
+
+  it('首叶三十八格（章名跨两格）、其后每叶四十格', () => {
+    expect(tocLeafCount(0)).toBe(0)
+    expect(tocLeafCount(38)).toBe(1)
+    expect(tocLeafCount(39)).toBe(2)
+    expect(tocLeafCount(78)).toBe(2)
+    expect(tocLeafCount(79)).toBe(3)
+    const result = assembleVolume(buildPlan())
+    const tocPages = result.pages.filter(p => p.toc)
+    tocPages.forEach((p, i) => {
+      expect(p.toc!.entries.length).toBeLessThanOrEqual(i === 0 ? 38 : 40)
+    })
+  })
+
+  it('单册不编卷：总目条目不冠「卷X」前缀', () => {
+    const result = assembleVolume(buildPlan())
+    const entries = result.pages.filter(p => p.toc).flatMap(p => p.toc!.entries)
+    for (const e of entries) expect(e.ordinal).toBe('')
+    // 标题首字即章名/节名，不是「卷」字
+    for (const e of entries) expect(e.chars[0].ch).not.toBe('卷')
   })
 })
 

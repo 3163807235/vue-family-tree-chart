@@ -174,7 +174,7 @@ export interface ChapterSpec {
   kind: ChapterKind
   /** 章名（版心书名、书眉、总目条目均取此值） */
   title: string
-  /** 卷次标签，如「卷一」；缺省时引擎按列目顺序自动编号 */
+  /** 卷次标签，如「卷一」；仅整谱分册装订时按册显式给出，单册缺省不编号、总目不冠卷次 */
   ordinal?: string
   /** 是否收入成册，默认 true */
   enabled?: boolean
@@ -249,6 +249,8 @@ export interface VolumePlan {
   pageSetup?: VolumePageSetup
   fonts?: VolumeFontSetup
   toc?: TocOptions
+  /** 句读（标点）排版样式：enable 控制是否采用古籍句读式紧凑排版，color 控制句读点颜色 */
+  punct?: { enable?: boolean; color?: string }
 }
 
 /** 解析后的版面参数（全部字段必有值） */
@@ -280,6 +282,8 @@ export interface RenderContext {
   setup: ResolvedPageSetup
   fonts: ResolvedFonts
   geometry: VolumeGeometry
+  /** 是否启用古籍句读式排版 */
+  enablePunct: boolean
 }
 
 /** 版框几何（每页相同） */
@@ -366,7 +370,7 @@ export interface CoverPageContent {
   metaSize: number
 }
 
-/** 总目条目落版 */
+/** 总目条目落版（二十格版式：一格一条目，标题在上、页码在下、虚线相接） */
 export interface TocRenderedEntry {
   /** 条目唯一标识（卷用章节 id，节用 `章节id#序号`） */
   entryId: string
@@ -378,7 +382,12 @@ export interface TocRenderedEntry {
   leafIndex: number
   /** 层级：0=卷（章）、1=节 */
   level: number
+  /** 标题（含卷次）竖排字，置于格子上部 */
   chars: VerticalChar[]
+  /** 页码竖排字，置于格子底部 */
+  pageNoChars: VerticalChar[]
+  /** 标题与页码之间的竖直虚线引导（无空隙时为 null） */
+  leader: { x: number; y1: number; y2: number } | null
   /** 条目字号 */
   size: number
   x: number

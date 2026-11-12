@@ -89,7 +89,7 @@ export function createChapter(
 
 /** 成册计划种子：只写差异，标准章节自动补齐 */
 export interface PlanSeed {
-  /** 谱名，如「周氏宗谱」 */
+  /** 谱名，如「测试宗谱」 */
   title: string
   /** 郡望/堂号，如「汝南堂」 */
   clanName?: string
@@ -106,6 +106,8 @@ export interface PlanSeed {
   pageSetup?: VolumePageSetup
   fonts?: VolumeFontSetup
   toc?: TocOptions
+  /** 句读（标点）排版样式：enable 控制古籍句读式紧凑排版，color 控制句读点颜色 */
+  punct?: { enable?: boolean; color?: string }
   /** 章节覆盖：按 id 优先、kind 次之匹配标准章节；匹配不到则新增一章 */
   chapters?: Partial<ChapterSpec>[]
   /** 重排：列出的 id 依序在前，未列出的按原相对顺序缀尾 */
@@ -171,7 +173,8 @@ export function createVolumePlan(seed: PlanSeed): VolumePlan {
     chapters: normalizeIds(chapters),
     pageSetup: seed.pageSetup,
     fonts: seed.fonts,
-    toc: seed.toc
+    toc: seed.toc,
+    punct: seed.punct
   }
 }
 

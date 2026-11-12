@@ -47,6 +47,12 @@ const genBadgeH = computed(
 )
 const genBadgeRadius = computed(() => Math.min(regStyle.value.nameSize * 0.35, genBadgeW.value / 2 - 0.5))
 
+/** 句读点颜色（来自 plan.punct.color），未配置则 undefined（继承正文墨色） */
+const punctColor = computed(() => props.plan.punct?.color || undefined)
+/** 标点字符着色：仅标点字符且配置了颜色时覆盖 */
+const fillOf = (c: { punct?: boolean }): string | undefined =>
+  c.punct ? punctColor.value : undefined
+
 /** 版心书名字号（字距随字号联动） */
 const SPINE_TITLE_SIZE = 50
 
@@ -250,15 +256,15 @@ function gridLines(page: VolumePage): number[] {
         <!-- ===== 封面 / 扉页 ===== -->
         <g v-if="page.cover" class="ftc-volume-cover">
           <text text-anchor="middle" :style="{ fontSize: page.cover.titleSize + 'px', fill: '#1a1208', fontWeight: 600 }">
-            <tspan v-for="(c, i) in page.cover.titleChars" :key="'ct' + i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in page.cover.titleChars" :key="'ct' + i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <text v-if="page.cover.clanChars.length" text-anchor="middle"
                 :style="{ fontSize: page.cover.clanSize + 'px', fill: '#3a2a1a' }">
-            <tspan v-for="(c, i) in page.cover.clanChars" :key="'cl' + i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in page.cover.clanChars" :key="'cl' + i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <text v-for="(col, ci) in page.cover.metaCols" :key="'cm' + ci" text-anchor="middle"
                 :style="{ fontSize: page.cover.metaSize + 'px', fill: '#3a2a1a' }">
-            <tspan v-for="(c, i) in col" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in col" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
         </g>
 
@@ -266,15 +272,24 @@ function gridLines(page: VolumePage): number[] {
         <g v-else-if="page.toc" class="ftc-volume-toc">
           <text v-if="page.toc.heading" text-anchor="middle"
                 :style="{ fontSize: page.toc.heading.size + 'px', fill: '#1a1208', fontWeight: 600 }">
-            <tspan v-for="(c, i) in page.toc.heading.chars" :key="'th' + i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in page.toc.heading.chars" :key="'th' + i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <g v-for="e in page.toc.entries" :key="e.entryId">
             <!-- 点击条目跳转该章首叶 -->
             <rect :x="e.x - e.size * 0.7" :y="page.frame.top" :width="e.size * 1.4"
                   :height="page.frame.bottom - page.frame.top" fill="transparent" style="cursor: pointer"
                   @click.stop="emit('navigate', { leafIndex: e.leafIndex, chapterId: e.chapterId })" />
+            <!-- 标题与页码之间的竖直虚线引导（一线到底，格内居中于列轴） -->
+            <line v-if="e.leader" :x1="e.leader.x" :x2="e.leader.x"
+                  :y1="e.leader.y1" :y2="e.leader.y2"
+                  stroke="#1a1208" stroke-width="1" stroke-dasharray="2 3" opacity="0.45" />
+            <!-- 标题：格子顶部 -->
             <text text-anchor="middle" :style="{ fontSize: e.size + 'px', fill: '#1a1208' }">
-              <tspan v-for="(c, i) in e.chars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              <tspan v-for="(c, i) in e.chars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
+            </text>
+            <!-- 页码：格子底部 -->
+            <text text-anchor="middle" :style="{ fontSize: e.size + 'px', fill: '#1a1208' }">
+              <tspan v-for="(c, i) in e.pageNoChars" :key="'p' + i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
           </g>
         </g>
@@ -283,19 +298,19 @@ function gridLines(page: VolumePage): number[] {
         <g v-else-if="page.text" class="ftc-volume-text">
           <text v-if="page.text.heading" text-anchor="middle"
                 :style="{ fontSize: page.text.heading.size + 'px', fill: '#1a1208', fontWeight: 600 }">
-            <tspan v-for="(c, i) in page.text.heading.chars" :key="'h' + i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in page.text.heading.chars" :key="'h' + i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <text v-for="(col, ci) in page.text.columns" :key="'c' + ci" text-anchor="middle"
                 :style="{ fontSize: col.size + 'px', fill: '#1a1208' }">
-            <tspan v-for="(c, i) in col.chars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in col.chars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <text v-for="(s, si) in page.text.subheadings" :key="'s' + si" text-anchor="middle"
                 :style="{ fontSize: s.size + 'px', fill: '#1a1208', fontWeight: 600 }">
-            <tspan v-for="(c, i) in s.chars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in s.chars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <text v-for="(s, si) in page.text.signatures" :key="'sg' + si" text-anchor="middle"
                 :style="{ fontSize: s.size + 'px', fill: '#3a2a1a' }">
-            <tspan v-for="(c, i) in s.chars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in s.chars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
         </g>
 
@@ -310,11 +325,11 @@ function gridLines(page: VolumePage): number[] {
                   :x="p.x + p.width / 2" :y="p.y + p.height / 2"
                   style="font-size: 22px; fill: #6b5842;">图版待补</text>
             <text text-anchor="middle" :style="{ fontSize: p.titleSize + 'px', fill: '#1a1208', fontWeight: 600 }">
-              <tspan v-for="(c, i) in p.titleChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              <tspan v-for="(c, i) in p.titleChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
             <text v-if="p.captionChars.length" text-anchor="middle"
                   :style="{ fontSize: p.captionSize + 'px', fill: '#3a2a1a' }">
-              <tspan v-for="(c, i) in p.captionChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              <tspan v-for="(c, i) in p.captionChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
           </template>
         </g>
@@ -347,25 +362,25 @@ function gridLines(page: VolumePage): number[] {
                   :rx="genBadgeRadius" :ry="genBadgeRadius" fill="#1a1208" />
             <text text-anchor="middle"
                   :style="{ fontSize: regStyle.nameSize + 'px', fill: '#FFFFFF', fontWeight: 'bold' }">
-              <tspan v-for="(c, i) in bp.chars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              <tspan v-for="(c, i) in bp.chars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
           </g>
           <g v-for="(p, pi) in page.register.people" :key="'p' + pi + p.id">
             <text v-if="p.labelChars.length" text-anchor="middle"
                   :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a' }">
-              <tspan v-for="(c, i) in p.labelChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              <tspan v-for="(c, i) in p.labelChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
             <text text-anchor="middle"
                   :style="{ fontSize: regStyle.nameSize + 'px', fill: '#1a1208', fontWeight: 'bold' }">
-              <tspan v-for="(c, i) in p.nameChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              <tspan v-for="(c, i) in p.nameChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
             <text v-if="p.contMarkChars.length" text-anchor="middle"
                   :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a' }">
-              <tspan v-for="(c, i) in p.contMarkChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              <tspan v-for="(c, i) in p.contMarkChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
             <text v-if="p.bioChars.length" text-anchor="middle"
                   :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a' }">
-              <tspan v-for="(c, i) in p.bioChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              <tspan v-for="(c, i) in p.bioChars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
           </g>
         </g>

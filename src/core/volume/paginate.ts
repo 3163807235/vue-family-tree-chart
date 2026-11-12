@@ -185,13 +185,111 @@ export function volumeGridXs(g: VolumeGeometry): number[] {
     .sort((a, b) => b - a)
 }
 
+/** 标点全集（全角为主，兼收半角）：竖排一律与正文同号 */
+const PUNCT_CHARS = new Set(
+  Array.from('，。、；：！？…‥·—「」『』（）〔〕【】〖〗《》〈〉“”‘’,.;:!?()[]')
+)
+/**
+ * 句读点：墨迹只占字身左下角一小点，竖排须沉到前一字字身的右下角（如「辰巳秋。」）。
+ * 其余标点（括号、引号、书名号、破折号、叹问号、冒号分号）本身占满字格，
+ * 竖排居中占位即合规，若一并右下移反会压上前字，故只置字号、不移位。
+ */
+const SINK_PUNCT = new Set(Array.from('，。、．,.'))
+/** 标点字号相对正文字号的比例（与正文同号） */
+const PUNCT_SCALE = 1
+/** 行高 / 字身（与 verticalRun 的 lineH = size × 1.15 同一系数） */
+const LINE_RATIO = 1.15
+/** 句读点墨迹在字身内的位置（自字身左上角计，单位字身）：居于左下部 */
+const PUNCT_INK_CX = 0.25
+const PUNCT_INK_CY = 0.72
+/** 句读点墨迹约高 0.35 字身，取其半径 */
+const PUNCT_INK_HALF = 0.175
+/** 句读点墨迹下缘距前字字心（字身）：略低于汉字墨迹下缘（0.5），
+ *  但须留在字格内（格高 1.15，格底距字心 0.575），否则列末句读点会越出版框 */
+const PUNCT_INK_BOTTOM = 0.53
+/** 标点墨迹横向落点：前字右缘外侧（自字心计，字身），落在字列右缘的空白带里 */
+const PUNCT_INK_X = 0.72
+/** 连续句读点依次下错的步距（行高的倍数） */
+const PUNCT_STACK = 0.3
+
+/** 标点相对本格字心的右移量（字身）：墨迹中心推到前字右缘之外 */
+const PUNCT_DX = PUNCT_INK_X - (PUNCT_INK_CX - 0.5) * PUNCT_SCALE
+/** 标点相对本格字心的上抬量（字身）：墨迹下缘恰落在前字右下角、仍留在格内 */
+const PUNCT_DY =
+  -LINE_RATIO + PUNCT_INK_BOTTOM - PUNCT_INK_HALF - (PUNCT_INK_CY - 0.5) * PUNCT_SCALE
+
+/**
+ * 排一个竖排字位。
+ * 非标点按字心原样返回；标点标记 punct:true 并置独立字号（与正文同号）。
+ * 句读点（SINK）在 enablePunct=true 时另记字形偏移 dx/dy，使墨迹落在前一字的右下角；
+ * enablePunct=false 时不偏移，标点居中占格（传统排版）。
+ * 因只记字形偏移、不改字位与行高，故分行、换行与每列容量计算分毫未动；
+ * 列首标点（无前字可依）保持在格中，不外溢出栏。
+ */
+function placeChar(
+  ch: string,
+  x: number,
+  y: number,
+  size: number,
+  colStart = false,
+  enablePunct = true
+): VerticalChar {
+  if (!PUNCT_CHARS.has(ch)) return { ch, x: r2(x), y: r2(y) }
+  const body: VerticalChar = { ch, x: r2(x), y: r2(y), size: r2(size * PUNCT_SCALE), punct: true }
+  if (!enablePunct || colStart || !SINK_PUNCT.has(ch)) return body
+  return { ...body, dx: r2(size * PUNCT_DX), dy: r2(size * PUNCT_DY) }
+}
+
 /** 竖排单列：自 topY 起向下排，字心位于每格行高的中点 */
-function verticalRun(text: string, x: number, topY: number, lineH: number): VerticalChar[] {
-  return Array.from(text).map((ch, i) => ({
-    ch,
-    x: r2(x),
-    y: r2(topY + lineH * (i + 0.5))
-  }))
+function verticalRun(
+  text: string,
+  x: number,
+  topY: number,
+  lineH: number,
+  size = lineH / 1.15,
+  enablePunct = true
+): VerticalChar[] {
+  return Array.from(text).map((ch, i) => placeChar(ch, x, topY + lineH * (i + 0.5), size, i === 0, enablePunct))
+}
+
+/**
+ * 正文竖排连排（古籍句读式）：句读点不占竖排字位，
+ * 直接落在前一正字的右下角、字列右缘的空白带里，故后字紧接前字，行距还原为正常 lineH。
+ * 连续句读点依次下错 PUNCT_STACK，互不叠合；
+ * 但墨迹下缘一律收在本列末格之下缘（cellBottom）以内，列末标点不会越出版框。
+ * 列首即句读点（无前字可依）时按整字占位、居中不出栏。
+ */
+function flowRun(
+  chars: string[],
+  x: number,
+  startY: number,
+  lineH: number,
+  size: number,
+  cellBottom: number
+): VerticalChar[] {
+  const out: VerticalChar[] = []
+  let centerY = startY + lineH / 2 // 下一整字格心
+  let prevY = startY // 最近一整字格心
+  let started = false
+  let run = 0
+  // 墨迹下缘相对排字 y 的位移（字身为负），据此把标点排字 y 收在格内
+  const inkDrop = (PUNCT_DY + (PUNCT_INK_CY - 0.5) * PUNCT_SCALE + PUNCT_INK_HALF) * size
+  const maxPunctY = cellBottom - inkDrop
+  for (const ch of chars) {
+    if (started && SINK_PUNCT.has(ch)) {
+      const stack = Math.min(run, 2) * lineH * PUNCT_STACK
+      const y = Math.min(prevY + lineH + stack, maxPunctY)
+      out.push(placeChar(ch, x, y, size, false))
+      run += 1
+      continue
+    }
+    out.push(placeChar(ch, x, centerY, size, !started))
+    prevY = centerY
+    centerY += lineH
+    started = true
+    run = 0
+  }
+  return out
 }
 
 /** 整列上下居中（章名、图题用） */
@@ -200,16 +298,14 @@ export function centerChars(
   x: number,
   topY: number,
   height: number,
-  lineH: number
+  lineH: number,
+  size = lineH / 1.15,
+  enablePunct = true
 ): VerticalChar[] {
   const chars = Array.from(text)
   if (!chars.length) return []
   const start = topY + (height - chars.length * lineH) / 2
-  return chars.map((ch, i) => ({
-    ch,
-    x: r2(x),
-    y: r2(start + lineH * (i + 0.5))
-  }))
+  return chars.map((ch, i) => placeChar(ch, x, start + lineH * (i + 0.5), size, i === 0, enablePunct))
 }
 
 /** 多段竖排连写（段间留气口），总目条目用 */
@@ -218,13 +314,15 @@ function composeVertical(
   x: number,
   topY: number,
   lineH: number,
-  gap: number
+  gap: number,
+  size = lineH / 1.15,
+  enablePunct = true
 ): VerticalChar[] {
   const out: VerticalChar[] = []
   let y = topY
   for (const part of parts) {
     if (!part) continue
-    out.push(...verticalRun(part, x, y, lineH))
+    out.push(...verticalRun(part, x, y, lineH, size, enablePunct))
     y += Array.from(part).length * lineH + gap
   }
   return out
@@ -260,6 +358,7 @@ export function paginateVerticalText(blocks: VerticalTextBlock[], ctx: RenderCon
   const topY = g.frame.top + TEXT_PAD_Y
   const bottomY = g.frame.bottom - TEXT_PAD_Y
   const height = bottomY - topY
+  const enablePunct = ctx.enablePunct
 
   const headFromBlocks = blocks.length > 0 && blocks[0].kind === 'heading'
   const headText = headFromBlocks ? blocks[0].text : ctx.chapter.title
@@ -271,7 +370,7 @@ export function paginateVerticalText(blocks: VerticalTextBlock[], ctx: RenderCon
   // 章首叶最外一列留给章名（占 slot 0），正文自 slot 1 起
   let slot = 1
   let heading: TextPageContent['heading'] = {
-    chars: centerChars(headText, columnX(g, 'right', 0), topY, height, headingLineH),
+    chars: centerChars(headText, columnX(g, 'right', 0), topY, height, headingLineH, headingSize, enablePunct),
     size: headingSize
   }
   let columns: TextColumn[] = []
@@ -322,7 +421,7 @@ export function paginateVerticalText(blocks: VerticalTextBlock[], ctx: RenderCon
     if (block.kind === 'subheading') {
       const s = claimSlot()
       const x = columnX(g, s.half, s.slot)
-      const chars = verticalRun(text, x, topY + subLineH, subLineH).slice(0, Math.max(1, Math.floor((bottomY - topY - subLineH) / subLineH) + 1))
+      const chars = verticalRun(text, x, topY + subLineH, subLineH, subSize, enablePunct).slice(0, Math.max(1, Math.floor((bottomY - topY - subLineH) / subLineH) + 1))
       subheadings.push({ chars, size: subSize })
       blockStarts.push(blockIndex)
       sections.push({ title: text, blockIndex, anchor: block.anchor })
@@ -333,7 +432,7 @@ export function paginateVerticalText(blocks: VerticalTextBlock[], ctx: RenderCon
       // 二级章名：独占一列、大字整列居中
       const s = claimSlot()
       const x = columnX(g, s.half, s.slot)
-      subheadings.push({ chars: centerChars(text, x, topY, height, headingLineH), size: headingSize })
+      subheadings.push({ chars: centerChars(text, x, topY, height, headingLineH, headingSize, enablePunct), size: headingSize })
       blockStarts.push(blockIndex)
       sections.push({ title: text, blockIndex, anchor: block.anchor })
       continue
@@ -347,15 +446,31 @@ export function paginateVerticalText(blocks: VerticalTextBlock[], ctx: RenderCon
     let offset = 0
     let firstCol = true
     while (offset < chars.length) {
-      const s = claimSlot()
-      const x = columnX(g, s.half, s.slot)
       const startY = isSignature && firstCol ? topY + lineH * 3 : topY
       const capHere = capAt(startY)
-      const seg = chars.slice(offset, offset + capHere)
-      const arr = verticalRun(seg.join(''), x, startY, lineH)
+      // 句读模式下句读点不占字位（记 0 单元）；传统模式下每字均占一格
+      let used = 0
+      let len = 0
+      while (offset + len < chars.length) {
+        const w = enablePunct && len > 0 && SINK_PUNCT.has(chars[offset + len]) ? 0 : 1
+        if (used + w > capHere) break
+        used += w
+        len += 1
+      }
+      // 避头点（仅句读模式）：列首不留句读点，续排的句读点回挂本列末尾（悬挂、不占位）
+      if (enablePunct && len > 0) {
+        while (offset + len < chars.length && SINK_PUNCT.has(chars[offset + len])) len += 1
+      }
+      const s = claimSlot()
+      const x = columnX(g, s.half, s.slot)
+      const cellBottom = startY + capHere * lineH
+      const seg = chars.slice(offset, offset + len)
+      const arr = enablePunct
+        ? flowRun(seg, x, startY, lineH, bodySize, cellBottom)
+        : verticalRun(seg.join(''), x, startY, lineH, bodySize, false)
       if (isSignature) signatures.push({ chars: arr, size: bodySize })
       else columns.push({ half: s.half, x: r2(x), size: bodySize, chars: arr })
-      offset += seg.length
+      offset += len
       firstCol = false
     }
   }
@@ -365,27 +480,52 @@ export function paginateVerticalText(blocks: VerticalTextBlock[], ctx: RenderCon
   return pages
 }
 
-/** 总目所需叶数：首页右半叶九列（最外一列为总目章名），其余叶左右共二十列 */
-export function tocLeafCount(entryCount: number): number {
-  if (entryCount <= 0) return 0
-  const first = HALF_COLS - 1
-  if (entryCount <= first) return 1
-  return 1 + Math.ceil((entryCount - first) / (HALF_COLS * 2))
-}
+/** 总目每半叶格列数：筒子页左右各二十格（一叶四十格），较正文十列更密 */
+export const TOC_COLS_PER_HALF = 20
 
-/** 某叶可容纳的总目条目数（叶序从 0 起，0 为章首叶） */
-function tocSlots(leafOffset: number): number {
-  return leafOffset === 0 ? HALF_COLS - 1 : HALF_COLS * 2
+/** 总目首叶章名所占格数（标题跨两列） */
+const TOC_HEADER_COLS = 2
+
+/** 总目列中轴：按二十格等分半叶，右半叶自版框外缘向内、左半叶自版心向外 */
+function tocColumnX(g: VolumeGeometry, half: 'right' | 'left', slot: number): number {
+  const colW = (g.frame.right - g.spine.right) / TOC_COLS_PER_HALF
+  return half === 'right'
+    ? g.frame.right - colW * (slot + 0.5)
+    : g.spine.left - colW * (slot + 0.5)
 }
 
 /**
- * 总目分页：一条目占一列，卷次、章名、叶码连排一竖行（段间半字气口），自右向左排列。
+ * 总目所需叶数：四十格版式（左右半叶各二十格），
+ * 首叶最外两格合为总目章名（余三十八格排条目），次叶起四十格全用于条目。
+ */
+export function tocLeafCount(entryCount: number): number {
+  if (entryCount <= 0) return 0
+  const first = TOC_COLS_PER_HALF * 2 - TOC_HEADER_COLS
+  if (entryCount <= first) return 1
+  return 1 + Math.ceil((entryCount - first) / (TOC_COLS_PER_HALF * 2))
+}
+
+/** 某叶可容纳的总目条目数（叶序从 0 起，0 为章首叶；章名跨首叶最外两格） */
+function tocSlots(leafOffset: number): number {
+  return leafOffset === 0 ? TOC_COLS_PER_HALF * 2 - TOC_HEADER_COLS : TOC_COLS_PER_HALF * 2
+}
+
+/**
+ * 总目分页：四十格筒子页版式（左右半叶各二十格，一条目占一格），自右向左排列。
+ *
+ * 格内行款（标题在上、页脚在下、虚线相接）：
+ * - 卷次 + 章名竖排于格子上部，自格子顶端起笔（节级缩进两行）；
+ * - 叶码竖排于格子底部，末字字脚贴版框下界，各条目页码统一齐底；
+ * - 标题末字与页码首字之间画一条竖直虚线引导，起止由实际字位算出，故不断点、不压字；
+ * - 首叶最外两格合为总目章名（跨列居中于两格交界），条目自第三格起排；
+ * - 总目页不画乌丝栏界行（列分隔线全部隐藏），仅留版框与版心。
  */
 export function paginateToc(entries: TocEntry[], ctx: RenderContext): RawPage[] {
   const g = ctx.geometry
   const baseSize = ctx.fonts.headingSize * 0.62
   const topY = g.frame.top + TEXT_PAD_Y
-  const height = g.frame.bottom - g.frame.top - TEXT_PAD_Y * 2
+  const bottomY = g.frame.bottom - TEXT_PAD_Y
+  const height = bottomY - topY
   const pages: RawPage[] = []
   let cursor = 0
   let leafOffset = 0
@@ -394,22 +534,39 @@ export function paginateToc(entries: TocEntry[], ctx: RenderContext): RawPage[] 
   while (true) {
     const capacity = tocSlots(leafOffset)
     const batch = entries.slice(cursor, cursor + capacity)
+    // 章名跨首叶最外两格：轴心取两格交界，字面纵向居中
+    const headingX = (tocColumnX(g, 'right', 0) + tocColumnX(g, 'right', 1)) / 2
     const heading: TocPageContent['heading'] =
       leafOffset === 0
-        ? { chars: centerChars(headText, columnX(g, 'right', 0), topY, height, ctx.fonts.headingSize * 1.15), size: ctx.fonts.headingSize }
+        ? { chars: centerChars(headText, headingX, topY, height, ctx.fonts.headingSize * 1.15, ctx.fonts.headingSize, ctx.enablePunct), size: ctx.fonts.headingSize }
         : null
     const rendered: TocRenderedEntry[] = []
     for (let i = 0; i < batch.length; i++) {
-      const slotNo = leafOffset === 0 ? i + 1 : i
-      const half: 'right' | 'left' = slotNo < HALF_COLS ? 'right' : 'left'
-      const slot = slotNo < HALF_COLS ? slotNo : slotNo - HALF_COLS
-      const x = columnX(g, half, slot)
+      const headSlots = leafOffset === 0 ? TOC_HEADER_COLS : 0
+      const slotNo = i + headSlots
+      const half: 'right' | 'left' = slotNo < TOC_COLS_PER_HALF ? 'right' : 'left'
+      const slot = slotNo < TOC_COLS_PER_HALF ? slotNo : slotNo - TOC_COLS_PER_HALF
+      const x = tocColumnX(g, half, slot)
       const e = batch[i]
       // 卷级条目用总目基准字号，节级条目缩一号并低两行起笔（竖排缩进）
       const size = e.level > 0 ? baseSize * 0.85 : baseSize
       const lineH = size * 1.15
       const startY = topY + lineH * Math.max(0, e.indent ?? 0)
-      const parts = e.ordinal ? [e.ordinal, e.title, e.leafNumber] : [e.title, e.leafNumber]
+
+      // 页码竖排于格子底部：末字墨迹下缘齐格子下界（按字号锚定，各级条目页码齐底）
+      const pageTopY = bottomY - size * 0.5 - (Array.from(e.leafNumber).length - 0.5) * lineH
+      const pageNoChars = verticalRun(e.leafNumber, x, pageTopY, lineH, size, ctx.enablePunct)
+
+      // 标题竖排于格子上部：卷次、章名分两段（段间半字气口），须给页码与虚线留出余量
+      const titleParts = e.ordinal ? [e.ordinal, e.title] : [e.title]
+      const leaderPad = lineH * 0.6
+      const titleRoom = Math.max(lineH, pageTopY - startY - leaderPad * 2)
+      const titleChars = composeVertical(titleParts, x, startY, lineH, lineH * 0.55, size, ctx.enablePunct)
+        .slice(0, Math.floor(titleRoom / lineH))
+      const titleBottom = titleChars.length ? titleChars[titleChars.length - 1].y + lineH * 0.5 : startY
+      const leaderTop = titleBottom + leaderPad
+      const leaderBottom = pageTopY - leaderPad
+
       rendered.push({
         entryId: e.entryId,
         chapterId: e.chapterId,
@@ -420,14 +577,18 @@ export function paginateToc(entries: TocEntry[], ctx: RenderContext): RawPage[] 
         level: e.level,
         x: r2(x),
         size,
-        chars: composeVertical(parts, x, startY, lineH, lineH * 0.55).slice(
-          0,
-          Math.floor((height - (startY - topY)) / lineH)
-        )
+        chars: titleChars,
+        pageNoChars,
+        leader:
+          leaderBottom > leaderTop
+            ? { x: r2(x), y1: r2(leaderTop), y2: r2(leaderBottom) }
+            : null
       })
     }
     pages.push({
       ...pageBase(ctx, leafOffset === 0),
+      // 总目页隐藏全部列分隔线（乌丝栏界行）
+      gridXs: [],
       toc: { heading, entries: rendered }
     })
     cursor += batch.length
@@ -498,7 +659,7 @@ export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'):
   // 组合块顶 = 内容区顶 + 黄金比上留白 → 谱名从此起排
   const titleTop = contentTop + topPad
   const titleBottom = titleTop + titleH
-  const titleChars = verticalRun(title, titleX, titleTop, titleLineH)
+  const titleChars = verticalRun(title, titleX, titleTop, titleLineH, titleSize, ctx.enablePunct)
 
   // ---- 题记两行（位置已由组合块顶 → 呼吸距自动确定） ----
   const metaCols: VerticalChar[][] = []
@@ -523,7 +684,7 @@ export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'):
   const clanTopPad = titleSize / PHI
   const clanX = 900
   const clanChars = clanText
-    ? verticalRun(clanText, clanX, g.frame.top + clanTopPad, clanLineH)
+    ? verticalRun(clanText, clanX, g.frame.top + clanTopPad, clanLineH, clanSize, ctx.enablePunct)
     : []
 
   const content: CoverPageContent = {
@@ -591,9 +752,9 @@ export function paginatePlates(plates: PlateItem[], ctx: RenderContext): RawPage
   ): PlatePlacement => {
     const r = region(layout, half)
     let y = g.frame.top
-    const titleChars = verticalRun(p.title, r.titleX, y, titleLineH)
+    const titleChars = verticalRun(p.title, r.titleX, y, titleLineH, titleSize, ctx.enablePunct)
     y += Array.from(p.title).length * titleLineH + titleSize * 0.6
-    const captionChars = p.caption ? verticalRun(p.caption, r.titleX, y, captionLineH) : []
+    const captionChars = p.caption ? verticalRun(p.caption, r.titleX, y, captionLineH, captionSize, ctx.enablePunct) : []
     return {
       plateId: p.id,
       title: p.title,

@@ -2,12 +2,23 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。所有值得记录的行为变化均列于此。
 
-## [Unreleased]
+## [1.4.0] - 2026-11-12
 
 ### 新增
 
+- **成册组件 `FamilyTreeVolume` 与成册体系**：新增 `createVolumePlan`（计划种子 `PlanSeed`：谱名、堂号、版次、世系树、章节覆盖、版式/字体/总目/句读配置）、`createChapter` / `insertChapter` / `removeChapter` / `moveChapter` / `setChapterEnabled` / `appendPreface` 编排 API，以及标准十二章体（封面、扉页、总目、序、凡例、恩荣录、字辈谱、世系图、世系录、传记、艺文、后记）；`assembleVolume` 一次装配出全部叶面，组件按叶绘制筒子页并派发 `navigate` / `page-click`。「卷次」标签仅在整谱分册装订时由 `ChapterSpec.ordinal` 显式给出（详见下方变更）。
+- **多级总目**：`TocEntry` 增加 `entryId` / `level`（0 卷、1 节）/ `parentId` / `indent`，并输出 `tocTree` 树形结构；`toc.maxLevel` 控制层级（0=仅卷，1=卷+节，默认 1），节级自动从传记传主、图版、世系图幅、世系录世代标签提取，也可由 `ChapterSpec.sections` 显式覆盖；节级字号为卷级 0.85 倍、缩进两行起笔。
+- **句读（标点）开关与着色**：`FamilyTreeBook` 新增 `enablePunct`（默认 `true`）与 `punctColor`；成册由 `VolumePlan.punct = { enable, color }` 统一配置。开启时句读类标点（，。、．）下沉至前字右下角、不占竖排字位，形成古籍句读式紧凑排版（连续句读点依次下错、列首不留点并回挂本列末尾）；关闭时标点居中独占一格。括号、引号、书名号、破折号、叹问号等非句读标点始终居中不偏移。
+- **世系图分幅 `sliceTree`**：按 `maxDepthPerTile`（每幅代数）、`maxTileWidth`、`overlapDepth`（骑缝代数）分幅，输出取景包围盒、节点/边子集、骑缝人物与续幅标记，装配层一叶一幅。
+- **图版管理**：`PlateItem` 支持 `category`（祠图/坟图/契据/书影/像赞）、`layout`（single/double）、`fit`（contain/cover）与 `frame`；`src` 为空自动渲染「图版待补」占位；输出 `plateIndex`。
 - **装订线装订点功能**（`FamilyTreeBook` / `FamilyTreeVolume` 通用）：新增 `bindingType`（none / staple 骑马钉 / sewing 锁线装 / perfect 胶装）、`bindingOffset`（装订线距纸边距离，mm）、`stapleCount`（钉数 2–5）、`sewingHoles`（槽孔数 3–12）四项排版参数；引擎导出新函数 `normalizeBinding`（参数校验夹紧）与 `computeBindingOnSpine`（装订线几何计算），页面对象 `BookSpine.binding` 携带完整渲染数据，画布实时绘制装订虚线及钉点/槽孔标识，打印导出随页面矢量图形自然生效。
 - **装订线作用于纸张边缘，与版框/版心骨架无关**：`bindingOffset` 语义为「距纸张物理边缘向内的距离」，取值范围 0–15mm（负值会超出纸面、物理不可行，自动夹紧到 0）；`offset=0` 时装订线与纸张左右物理边缘精准重合。两条装订线对称分布于筒子页左右纸边（`lineXs = [offset×MM, pageWidth − offset×MM]`），对折后在书脊处完全重合，符合筒子页装订工艺；版框、乌丝栏、版心鱼尾、跨页拼接与叶码位置均不受装订参数影响。
+
+### 变更
+
+- **总目改为四十格版式**：一叶 40 格（筒子页左右半叶各 20 格），首叶最外两格合为「总目」章名（跨列居中，余 38 格排条目），次叶起满 40 格；总目页隐藏全部乌丝栏列分隔线，仅留版框与版心两界。格内行款为「标题竖排于格子上部 + 叶码竖排齐底 + 两者间一条竖直虚线引导」，叶码按字号锚定，各级条目页码严格齐底。同时修正旧版总目首叶只排 9 条、左半叶整片留白的缺陷（`tocLeafCount` 与分页容量同步）。
+- **单册不再自动编卷**：`ChapterSpec.ordinal` 缺省时不再按列目顺序自动生成「卷一、卷二……」，总目条目一律不冠卷次；卷次仅用于「家族庞大、整谱拆分为数册装订」场景，由调用方按册显式给出。
+- **世系图分幅默认参数**调整为 `gapX=56`、`gapY=76`、`mainSize=26`、`auxSize=20`（原 80 / 90 / 14 / 11），图幅内文字与间距更适配单叶版面。
 
 ## [1.3.0] - 2026-10-11
 

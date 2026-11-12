@@ -7,6 +7,7 @@
 - ⚡ **高性能**：WebWorker 异步布局 + 视口二分虚拟渲染，仅渲染可见节点/连线；文字自动降级。
 - 🖱️ **丰富交互**：拖拽平移、滚轮以鼠标为中心缩放、节点点击折叠/展开、悬停高亮祖先链整条分支。
 - 🎨 **强定制**：`--ftc-*` CSS 变量主题、主/辅文字样式、排版方向（ltr/rtl）、世系标尺。
+- 📖 **谱牒版刻**：`FamilyTreeBook` 谱书（牒记式竖排筒子页）与 `FamilyTreeVolume` 成册（封面/扉页/总目/十二章体/图版），句读可开关、可着色。
 - 📦 **TypeScript 友好**：完整类型导出，数据校验、受控属性、命令式 API 齐备。
 
 ## 安装
@@ -109,6 +110,77 @@ onMounted(() => chart.value.fitView())
 | `overload` | `{ total }` | 节点数超限时的展示 |
 | `toolbar` | `{ direction, gapX, gapY, collapsed, setDirection, toggleDirection, expandAll, collapseAll, fitView, focusNode }` | 自定义工具条 |
 | `metrics` | `{ metrics }` | 自定义性能浮层 |
+
+## 谱书（FamilyTreeBook）
+
+按牒记式古籍行款把 `FamilyNode` 树排成 A3 横版筒子页（四周双边版框、乌丝栏界格、版心双鱼尾与竖排谱名、竖排从右至左），支持跨半叶折页、翻页续传。
+
+```vue
+<script setup lang="ts">
+import { FamilyTreeBook } from 'vue-family-tree-chart'
+import 'vue-family-tree-chart/style.css'
+import type { FamilyNode } from 'vue-family-tree-chart'
+
+const data: FamilyNode = { id: 'root', name: '周邦', gender: 'm', children: [] }
+</script>
+
+<template>
+  <FamilyTreeBook :data="data" title="周氏宗谱" running-title="世系简录" :enable-punct="true" />
+</template>
+```
+
+| 名称 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `data` | `FamilyNode` | -（必填） | 家谱根节点 |
+| `pageWidth` / `pageHeight` | `number` | `1587` / `1123` | 纸张尺寸（A3 横版，96dpi） |
+| `margin` | `number` | `64` | 版框距左右纸边 |
+| `topMargin` / `bottomMargin` | `number` | `76` / `56` | 天头 / 地脚 |
+| `nameSize` / `bioSize` | `number` | `28` / `14` | 姓名字号 / 传文字号 |
+| `bioLineSpacing` | `number` | `1.15` | 传文行距倍数 |
+| `nameFontFamily` / `bioFontFamily` | `string` | `''` | 姓名字体 / 传文字体（空串随系统） |
+| `nameFontWeight` | `string \| number` | `'bold'` | 姓名字重 |
+| `gridColWidth` | `number` | `40` | 乌丝栏格宽 |
+| `spineWidth` | `number` | `60.47` | 版心宽度（16mm） |
+| `title` | `string` | `''` | 版心竖排谱名 |
+| `runningTitle` | `string` | `''` | 书眉（仅章首叶） |
+| `enablePunct` | `boolean` | `true` | 句读开关：开＝标点下沉前字右下角（古籍句读式紧凑排版），关＝标点格内居中 |
+| `punctColor` | `string` | `''` | 句读点颜色（空串随正文墨色） |
+
+## 成册（FamilyTreeVolume）
+
+把整部家谱编排为完整成册：封面、扉页、总目、各体章节（序跋、凡例、恩荣录、字辈谱、世系图、世系录、传记、艺文、后记）与图版，一叶一筒子页。
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import { FamilyTreeVolume, createVolumePlan } from 'vue-family-tree-chart'
+import 'vue-family-tree-chart/style.css'
+
+const plan = ref(createVolumePlan({
+  title: '周氏宗谱',
+  clanName: '汝南堂',
+  tree: data,
+  punct: { enable: true, color: '#9c2b2b' },   // 句读开关与颜色
+  toc: { maxLevel: 1 },                        // 总目层级：0=仅卷，1=卷+节
+  pageSetup: { bindingType: 'staple', stapleCount: 2 }
+}))
+</script>
+
+<template>
+  <FamilyTreeVolume :plan="plan" @navigate="({ chapterId }) => console.log(chapterId)" />
+</template>
+```
+
+| 名称 | 类型 | 说明 |
+|------|------|------|
+| `plan` | `VolumePlan` | 成册计划（`createVolumePlan` 产出，可序列化） |
+| `customRenderers` | `Record<string, CustomRenderer>` | 自定义章节渲染器，键为章节 id 或 kind |
+
+事件：`navigate`（`{ leafIndex, chapterId }`，点击总目条目/章节跳转）、`page-click`（`{ leafIndex }`）。
+
+**总目版式**：一叶 40 格（筒子页左右半叶各 20 格），首叶最外两格合为「总目」章名；条目一格一条——标题竖排于格上、叶码竖排齐底、两者间以竖直虚线相连，不画乌丝栏列分隔线。**卷次（「卷一」「卷二」）仅在整谱分册装订时由 `ChapterSpec.ordinal` 显式给出，单册不自动编号、总目不冠卷次。**
+
+成册计划相关 API：`createChapter` / `insertChapter` / `removeChapter` / `moveChapter` / `setChapterEnabled` / `appendPreface`。
 
 ## 主题（CSS 变量）
 

@@ -173,6 +173,14 @@ export interface VerticalChar {
   x: number
   /** 字符中心 y（页坐标，上→下） */
   y: number
+  /** 字形额外右移量（px）。仅句读点携带，使墨迹落到前一字右下角；不改字位与行距 */
+  dx?: number
+  /** 字形额外上抬量（px，负值）。仅句读点携带，与 dx 配合沉至前一字右下角 */
+  dy?: number
+  /** 本字独立字号（px）。仅标点携带（与正文同号），缺省沿用所在文本块字号 */
+  size?: number
+  /** 是否为标点字符（句读点/括号/引号等）；渲染层据此单独着色 */
+  punct?: boolean
 }
 
 /** 谱书页中单个人物的排版结果 */
@@ -323,4 +331,8 @@ export interface BookLayoutOptions {
   stapleCount?: number
   /** 锁线槽孔数量（3–12），默认 6 */
   sewingHoles?: number
+  /** 是否启用古籍句读式排版（句读点沉到前字右下角、不独占字格），默认 true */
+  enablePunct?: boolean
+  /** 句读点颜色（CSS 颜色），缺省时随正文墨色 */
+  punctColor?: string
 }

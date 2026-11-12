@@ -87,12 +87,14 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
   const geometry = computeVolumeGeometry(setup)
   const enabled = plan.chapters.filter(c => c.enabled !== false)
 
+  const enablePunct = plan.punct?.enable ?? true
   const makeCtx = (chapter: ChapterSpec): RenderContext => ({
     plan,
     chapter,
     setup,
     fonts,
-    geometry
+    geometry,
+    enablePunct
   })
 
   /** 传记块序列：章名 + （传主名小节题 + 传文 + 署名）× n，同时记录每篇传文的起始块索引 */
@@ -151,6 +153,7 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
       topMargin: setup.topMargin,
       bottomMargin: setup.bottomMargin,
       spineWidth: setup.spineWidth,
+      enablePunct,
       ...options
     }
     const result = runBookLayout(root, merged)
@@ -299,17 +302,9 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
     if (!isFront(ch)) dispBudget += count
   }
 
-  // 卷次：前置页与总目不编号；其余按列目顺序自动编「卷一、卷二……」
+  // 卷次：仅整谱分册装订时由 ChapterSpec.ordinal 显式给出（如「卷一」）；单册不编卷、总目不冠卷次
   const ordinalOf = new Map<string, string>()
-  let volumeNo = 0
-  for (const ch of enabled) {
-    if (isFront(ch) || isToc(ch)) {
-      ordinalOf.set(ch.id, ch.ordinal ?? '')
-      continue
-    }
-    volumeNo += 1
-    ordinalOf.set(ch.id, ch.ordinal ?? `卷${toChineseNum(volumeNo)}`)
-  }
+  for (const ch of enabled) ordinalOf.set(ch.id, isFront(ch) || isToc(ch) ? '' : ch.ordinal ?? '')
 
   // 总目条目：卷级指向章首叶，节级指向小节所在叶（总目自身不入目）
   const tocEntries: TocEntry[] = []

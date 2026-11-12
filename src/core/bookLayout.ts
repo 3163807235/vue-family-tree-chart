@@ -139,13 +139,16 @@ function layoutVerticalChars(
   stepX: number,
   maxY: number,
   lineH: number,
-  hardMinX = -Infinity
+  hardMinX = -Infinity,
+  size = lineH / 1.15,
+  enablePunct = true
 ): { chars: VerticalChar[]; cols: number } {
   const chars: VerticalChar[] = []
   if (!text) return { chars, cols: 0 }
   let x = startX
   let y = startY
   let colIdx = 0
+  let firstInCol = true
   for (const ch of text) {
     if (y > maxY) {
       const nextX = x - stepX
@@ -154,11 +157,63 @@ function layoutVerticalChars(
       x = nextX
       colIdx += 1
       y = startY
+      firstInCol = true
     }
-    chars.push({ ch, x, y })
+    chars.push(placeChar(ch, x, y, size, firstInCol, enablePunct))
     y += lineH
+    firstInCol = false
   }
   return { chars, cols: colIdx + 1 }
+}
+
+/** 标点全集（全角为主，兼收半角）：竖排一律与正文同号 */
+const PUNCT_CHARS = new Set(
+  Array.from('，。、；：！？…‥·—「」『』（）〔〕【】〖〗《》〈〉“”‘’,.;:!?()[]')
+)
+/**
+ * 句读点：墨迹只占字身左下角一小点，竖排须沉到前一字字身的右下角（如「辰巳秋。」）。
+ * 其余标点（括号、引号、书名号、破折号、叹问号、冒号分号）本身占满字格，
+ * 竖排居中占位即合规，若一并右下移反会压上前字，故只置字号、不移位。
+ */
+const SINK_PUNCT = new Set(Array.from('，。、．,.'))
+/** 标点字号相对正文字号的比例（与正文同号） */
+const PUNCT_SCALE = 1
+/** 行高 / 字身（与各处 lineH = size × 1.15 同一系数） */
+const LINE_RATIO = 1.15
+/** 句读点墨迹在字身内的位置（自字身左上角计，单位字身）：居于左下部 */
+const PUNCT_INK_CX = 0.25
+const PUNCT_INK_CY = 0.72
+/** 句读点墨迹约高 0.35 字身，取其半径 */
+const PUNCT_INK_HALF = 0.175
+/** 句读点墨迹下缘距前字字心（字身）：略低于汉字墨迹下缘（0.5），仍留在字格内 */
+const PUNCT_INK_BOTTOM = 0.53
+/** 标点墨迹横向落点：前字右缘外侧（自字心计，字身），落在字列右缘的空白带里 */
+const PUNCT_INK_X = 0.72
+
+const PUNCT_DX = PUNCT_INK_X - (PUNCT_INK_CX - 0.5) * PUNCT_SCALE
+const PUNCT_DY =
+  -LINE_RATIO + PUNCT_INK_BOTTOM - PUNCT_INK_HALF - (PUNCT_INK_CY - 0.5) * PUNCT_SCALE
+
+/**
+ * 排一个竖排字位（与成册引擎 paginate.ts 同规则）。
+ * 标点标记 punct:true 并置独立字号；句读点（SINK）在 enablePunct=true 时
+ * 另记字形偏移 dx/dy，使墨迹落在前一字的右下角，与正文同号；
+ * enablePunct=false 时不偏移，标点居中占格。
+ * 因不改字位、行高与竖行步距，故不压字、不影响分行与容量计算；
+ * 列首标点保持在格中。
+ */
+function placeChar(
+  ch: string,
+  x: number,
+  y: number,
+  size: number,
+  colStart = false,
+  enablePunct = true
+): VerticalChar {
+  if (!PUNCT_CHARS.has(ch)) return { ch, x, y }
+  const body: VerticalChar = { ch, x, y, size: size * PUNCT_SCALE, punct: true }
+  if (!enablePunct || colStart || !SINK_PUNCT.has(ch)) return body
+  return { ...body, dx: size * PUNCT_DX, dy: size * PUNCT_DY }
 }
 
 /**
@@ -170,15 +225,15 @@ function centerVerticalChars(
   x: number,
   rowTopY: number,
   rowHeight: number,
-  lineH: number
+  lineH: number,
+  size = lineH / 1.15,
+  enablePunct = true
 ): VerticalChar[] {
   if (!text) return []
   const topPad = Math.max(0, (rowHeight - text.length * lineH) / 2)
-  return text.split('').map((ch, i) => ({
-    ch,
-    x,
-    y: rowTopY + topPad + lineH / 2 + i * lineH
-  }))
+  return text.split('').map((ch, i) =>
+    placeChar(ch, x, rowTopY + topPad + lineH / 2 + i * lineH, size, i === 0, enablePunct)
+  )
 }
 
 export function runBookLayout(root: FamilyNode, opts: BookLayoutOptions = {}): BookLayoutResult {
@@ -194,6 +249,7 @@ export function runBookLayout(root: FamilyNode, opts: BookLayoutOptions = {}): B
   const bioSize = opts.bioSize ?? 14
   const bioLineSpacing = opts.bioLineSpacing ?? 1.15 // 传文行距倍数：1.15 紧排（默认）、1.5 宽排
   const spineWidth = opts.spineWidth ?? 60.47 // 中缝（版心）宽 16mm（96dpi：16×96/25.4≈60.47px）
+  const enablePunct = opts.enablePunct ?? true
 
   // 版框（边栏）
   const frame: BookRect = {
@@ -403,7 +459,7 @@ export function runBookLayout(root: FamilyNode, opts: BookLayoutOptions = {}): B
       const segLeft = r2(c.segLeftFull)
       const segCX = r2(c.segRight - colW / 2)
       const chars = centerVerticalChars(
-        text, segCX, colTopY, frame.bottom - colTopY, nameLineH
+        text, segCX, colTopY, frame.bottom - colTopY, nameLineH, nameSize, enablePunct
       ).map(ch => ({ ...ch, y: r2(ch.y) }))
       pageGenLabels.push({
         generation: item.generation,
@@ -445,7 +501,7 @@ export function runBookLayout(root: FamilyNode, opts: BookLayoutOptions = {}): B
       const labelChars = isContinuation
         ? []
         : centerVerticalChars(
-            `${item.parentName ?? ''}${item.rank ?? ''}`, segCX, colTopY, labelH, labelLineH
+            `${item.parentName ?? ''}${item.rank ?? ''}`, segCX, colTopY, labelH, labelLineH, labelSize, enablePunct
           )
 
       // 中格：首片姓名大字格中居中；续传片姓名大字下缀小字「续」，整体居中
@@ -467,7 +523,7 @@ export function runBookLayout(root: FamilyNode, opts: BookLayoutOptions = {}): B
           }
         ]
       } else {
-        nameChars = centerVerticalChars(nameText, segCX, nameTopY, nameH, nameLineH)
+        nameChars = centerVerticalChars(nameText, segCX, nameTopY, nameH, nameLineH, nameSize, enablePunct)
       }
 
       // 下格：本片传文自格顶竖排、满一竖行在格内向左换竖行（硬左界=格左缘）；
@@ -477,7 +533,7 @@ export function runBookLayout(root: FamilyNode, opts: BookLayoutOptions = {}): B
       const usedRows = Math.min(cellRows, Math.max(1, Math.ceil(segText.length / bioCap)))
       const blockRightCX = r2(segCX + ((usedRows - 1) * bioStepX) / 2)
       const { chars: bioChars } = layoutVerticalChars(
-        segText, blockRightCX, bioStartY, bioStepX, bioMaxY, bioLineH, segLeft
+        segText, blockRightCX, bioStartY, bioStepX, bioMaxY, bioLineH, segLeft, bioSize, enablePunct
       )
       const continuesNext = offset + segText.length < fullBio.length
 

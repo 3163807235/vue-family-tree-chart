@@ -40,10 +40,10 @@ export function sliceTree(root: FamilyNode, options: TreeTileOptions = {}): Tree
   const maxTileWidth = Math.max(1, options.maxTileWidth ?? 900)
   const overlapDepth = Math.max(0, options.overlapDepth ?? 1)
   const padding = options.padding ?? 40
-  const gapX = options.gapX ?? 80
-  const gapY = options.gapY ?? 90
-  const mainSize = options.mainSize ?? 14
-  const auxSize = options.auxSize ?? 11
+  const gapX = options.gapX ?? 56
+  const gapY = options.gapY ?? 76
+  const mainSize = options.mainSize ?? 26
+  const auxSize = options.auxSize ?? 20
 
   const layout = runLayout(root, gapX, gapY, [], mainSize, auxSize)
   const all = layout.nodes

@@ -32,6 +32,10 @@ interface Props {
   title?: string
   /** 书眉（右缘单格竖排小字，如"测试世系简录"） */
   runningTitle?: string
+  /** 是否启用古籍句读式排版（句读点沉到前字右下角），默认 true */
+  enablePunct?: boolean
+  /** 句读点颜色（CSS 颜色），缺省时随正文墨色 */
+  punctColor?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -50,7 +54,9 @@ const props = withDefaults(defineProps<Props>(), {
   gridColWidth: 40,
   spineWidth: 60.47, // 中缝（版心）宽 16mm（96dpi：16×96/25.4≈60.47px）
   title: '',
-  runningTitle: ''
+  runningTitle: '',
+  enablePunct: true,
+  punctColor: ''
 })
 
 // 书眉专用：思源宋体 SemiBold（600 半粗），本机已装 Source Han Serif CN；回退 Noto Serif SC / 系统宋体
@@ -85,8 +91,13 @@ const options = computed<BookLayoutOptions>(() => ({
   bioSize: props.bioSize,
   bioLineSpacing: props.bioLineSpacing,
   gridColWidth: props.gridColWidth,
-  spineWidth: props.spineWidth
+  spineWidth: props.spineWidth,
+  enablePunct: props.enablePunct
 }))
+
+/** 标点字符的着色：仅当配置了 punctColor 时覆盖，否则继承正文墨色 */
+const fillOf = (c: { punct?: boolean }): string | undefined =>
+  c.punct && props.punctColor ? props.punctColor : undefined
 
 const book = computed(() => runBookLayout(props.data, options.value))
 
@@ -255,24 +266,24 @@ const genBadgeH = computed(() =>
           <!-- 上格：父名在上、排行在下，竖排连写一列（始祖、续传栏留空） -->
           <text v-if="p.labelChars.length" text-anchor="middle"
                 :style="{ fontSize: bioSize + 'px', fill: '#3a2a1a', fontFamily: bioFontFamily || undefined }">
-            <tspan v-for="(c, i) in p.labelChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in p.labelChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
 
           <!-- 中格：姓名（大字竖排，栏格正中） -->
           <text text-anchor="middle" :style="{ fontSize: nameSize + 'px', fill: '#1a1208', fontWeight: nameFontWeight, fontFamily: nameFontFamily || undefined }">
-            <tspan v-for="(c, i) in p.nameChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in p.nameChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
 
           <!-- 中格姓名下方小字标记：续传栏为「续」 -->
           <text v-if="p.contMarkChars.length" text-anchor="middle"
                 :style="{ fontSize: bioSize + 'px', fill: '#3a2a1a', fontFamily: bioFontFamily || undefined }">
-            <tspan v-for="(c, i) in p.contMarkChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in p.contMarkChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
 
           <!-- 下格：生平传文（小字竖排，含字/配/生卒等；自格顶排起，满竖行在格内向左换行，整块在格宽内左右居中，超出格容量翻页续传） -->
           <text v-if="p.bioChars.length" text-anchor="middle"
                 :style="{ fontSize: bioSize + 'px', fill: '#3a2a1a', fontFamily: bioFontFamily || undefined }">
-            <tspan v-for="(c, i) in p.bioChars" :key="i" :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            <tspan v-for="(c, i) in p.bioChars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
         </g>
 
