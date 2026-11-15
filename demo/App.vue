@@ -165,8 +165,12 @@ const volumePlan = computed(() =>
     compiler: '二十三世孙：维城 主修',
     compileDate: '公元二〇二六年孟冬',
     tree: bookData.value,
-    // =====bodySize: 28是控制正文字体大小，headingSize: 40是控制章节标题的字体大小
-    fonts: { bodySize: 40, headingSize: 40 },
+    // 正文字号/字体独立可调；章节标题字号保持 40
+    fonts: {
+      bodySize: volBodySize.value,
+      headingSize: 40,
+      bodyFontFamily: volBodyFont.value
+    },
     punct: { enable: volumeEnablePunct.value, color: volumePunctColor.value },
     pageSetup: {
       bindingType: bindingType.value,
@@ -224,12 +228,38 @@ const volumePlan = computed(() =>
         }
       },
       {
-        // 世系图分幅：每幅至多三代、相邻幅重叠一代，超幅自动续叶
+        // 世系图分幅：世代数与节点数均不设固定上限，按半叶可用宽/版框内高自动收代，
+        // 某一代整行（含配偶列）排不下时，该代及之后世代顺延下一幅；相邻幅重叠一代作骑缝。
+        // 主/辅字号即最终显示字号（缩放锁定），左右间距/层距只改变分幅与页数
         id: 'treeDiagram',
         content: {
           type: 'tree',
           root: bookData.value,
-          tiles: { maxDepthPerTile: 3, overlapDepth: 1 }
+          tiles: {
+            overlapDepth: 1,
+            showRank: volShowRank.value,
+            showInherit: volShowInherit.value,
+            spouseFormat: volSpouseFormat.value,
+            mainSize: volTreeMainSize.value,
+            auxSize: volTreeAuxSize.value,
+            gapX: volTreeGapX.value,
+            gapY: volTreeGapY.value
+          }
+        }
+      },
+      {
+        id: 'register',
+        content: {
+          type: 'register',
+          root: bookData.value,
+          options: {
+            nameSize: volRegNameSize.value,
+            bioSize: volRegBioSize.value,
+            bioLineSpacing: volRegBioLh.value,
+            nameFontFamily: volRegNameFont.value,
+            nameFontWeight: volRegNameWeight.value,
+            bioFontFamily: volRegBioFont.value
+          }
         }
       },
       {
@@ -378,6 +408,19 @@ const bookBioFont = ref(SERIF_CN_STACK)
 const bookNameWeight = computed(() =>
   FONT_FAMILIES.find(f => f.value === bookNameFont.value)?.weight ?? 'bold'
 )
+// 成册正文排版参数：保留原有 40px 正文字号，字体默认随系统
+const volBodySize = ref(40)
+const volBodyFont = ref('')
+const BODY_SIZES = [{ label: '40 px', px: 40 }, ...NAME_SIZES]
+// 成册世系录排版参数：与谱书视图各自独立，默认值保持一致
+const volRegNameSize = ref(29.33)
+const volRegBioSize = ref(18.67)
+const volRegBioLh = ref(1.25)
+const volRegNameFont = ref(SERIF_CN_STACK)
+const volRegBioFont = ref(SERIF_CN_STACK)
+const volRegNameWeight = computed(() =>
+  FONT_FAMILIES.find(f => f.value === volRegNameFont.value)?.weight ?? 'bold'
+)
 
 // ===== 句读（标点）控制 =====
 // 句读开关 + 颜色做成气泡选项：开启时句读点（，。、．）沉到前字右下角、不独占字格；
@@ -386,13 +429,56 @@ const bookEnablePunct = ref(true)
 const bookPunctColor = ref('#9c2b2b') // 朱砂红
 const volumeEnablePunct = ref(true)
 const volumePunctColor = ref('#9c2b2b')
-// 气泡开关（book / volume 两组共用同一状态，因视图互斥）
+// 成册世系图展示控件（与图谱视图的控件各自独立）
+const volShowRank = ref(true)
+const volShowInherit = ref(true)
+const volSpouseFormat = ref<SpouseFormat>('full')
+const volTreeMainSize = ref(12)
+const volTreeAuxSize = ref(8)
+const volTreeGapX = ref(26)
+const volTreeGapY = ref(67)
+// 气泡开关（book / volume 共用：排版、正文、句读、世系图、装订，互斥展开）
+const typographyPopOpen = ref(false)
+const bodyPopOpen = ref(false)
 const punctPopOpen = ref(false)
-function togglePunctPop() { punctPopOpen.value = !punctPopOpen.value }
+const treePopOpen = ref(false)
+const bindingPopOpen = ref(false)
+function closePops() {
+  typographyPopOpen.value = false
+  bodyPopOpen.value = false
+  punctPopOpen.value = false
+  treePopOpen.value = false
+  bindingPopOpen.value = false
+}
+function toggleTypographyPop() {
+  const on = typographyPopOpen.value
+  closePops()
+  typographyPopOpen.value = !on
+}
+function toggleBodyPop() {
+  const on = bodyPopOpen.value
+  closePops()
+  bodyPopOpen.value = !on
+}
+function togglePunctPop() {
+  const on = punctPopOpen.value
+  closePops()
+  punctPopOpen.value = !on
+}
+function toggleTreePop() {
+  const on = treePopOpen.value
+  closePops()
+  treePopOpen.value = !on
+}
+function toggleBindingPop() {
+  const on = bindingPopOpen.value
+  closePops()
+  bindingPopOpen.value = !on
+}
 // 点击气泡外部关闭
 function onDocClick(e: MouseEvent) {
   const el = (e.target as HTMLElement)?.closest('.punct-pop-wrap')
-  if (!el) punctPopOpen.value = false
+  if (!el) closePops()
 }
 onMounted(() => document.addEventListener('click', onDocClick))
 onUnmounted(() => document.removeEventListener('click', onDocClick))
@@ -493,29 +579,41 @@ function toggleRootFold() {
 
         <!-- 谱书视图专用控制组 -->
         <span class="ctl-group" v-else-if="viewMode === 'book'" key="book">
-          <label class="ctl">姓名字号
-            <select v-model.number="bookNameSize">
-              <option v-for="s in NAME_SIZES" :key="s.label" :value="s.px">{{ s.label }}</option>
-            </select>
-          </label>
-          <label class="ctl">传文字号
-            <select v-model.number="bookBioSize">
-              <option v-for="s in BIO_SIZES" :key="s.label" :value="s.px">{{ s.label }}</option>
-            </select>
-          </label>
-          <label class="ctl">行距
-            <input type="range" min="1" max="2" step="0.05" v-model.number="bookBioLh" style="width:80px">
-          </label>
-          <label class="ctl">姓名字体
-            <select v-model="bookNameFont">
-              <option v-for="f in FONT_FAMILIES" :key="f.label" :value="f.value">{{ f.label }}</option>
-            </select>
-          </label>
-          <label class="ctl">传文字体
-            <select v-model="bookBioFont">
-              <option v-for="f in FONT_FAMILIES" :key="f.label" :value="f.value">{{ f.label }}</option>
-            </select>
-          </label>
+          <!-- 谱书排版选项：字号、行距与字体收进气泡，保持工具栏简洁 -->
+          <span class="ctl punct-pop-wrap">
+            <button class="tg" :class="{ on: typographyPopOpen }" @click.stop="toggleTypographyPop">排版</button>
+            <div v-if="typographyPopOpen" class="punct-pop typography-pop" @click.stop>
+              <label class="pop-row">
+                <span>姓名字号</span>
+                <select v-model.number="bookNameSize">
+                  <option v-for="s in NAME_SIZES" :key="s.label" :value="s.px">{{ s.label }}</option>
+                </select>
+              </label>
+              <label class="pop-row">
+                <span>传文字号</span>
+                <select v-model.number="bookBioSize">
+                  <option v-for="s in BIO_SIZES" :key="s.label" :value="s.px">{{ s.label }}</option>
+                </select>
+              </label>
+              <label class="pop-row">
+                <span>传文行距</span>
+                <input type="range" min="1" max="2" step="0.05" v-model.number="bookBioLh">
+                <b class="pop-val">{{ bookBioLh.toFixed(2) }}</b>
+              </label>
+              <label class="pop-row">
+                <span>姓名字体</span>
+                <select v-model="bookNameFont">
+                  <option v-for="f in FONT_FAMILIES" :key="f.label" :value="f.value">{{ f.label }}</option>
+                </select>
+              </label>
+              <label class="pop-row">
+                <span>传文字体</span>
+                <select v-model="bookBioFont">
+                  <option v-for="f in FONT_FAMILIES" :key="f.label" :value="f.value">{{ f.label }}</option>
+                </select>
+              </label>
+            </div>
+          </span>
           <span class="ctl punct-pop-wrap">
             <button class="tg" :class="{ on: curEnablePunct }" @click.stop="togglePunctPop">句读</button>
             <div v-if="punctPopOpen" class="punct-pop" @click.stop>
@@ -541,26 +639,129 @@ function toggleRootFold() {
         <span class="ctl-group" v-else key="volume">
           <span class="ctl">全谱十五卷 · 点击总目条目可跳转至该卷首叶</span>
           <button @click="printVolume">打印成册</button>
-          <span class="ctl">装订
-            <select v-model="bindingType">
-              <option value="none">不装订</option>
-              <option value="staple">骑马钉</option>
-              <option value="sewing">锁线装</option>
-              <option value="perfect">胶装</option>
-            </select>
+          <span class="sep"></span>
+          <!-- 正文字体字号（不影响章节标题和世系录独立排版） -->
+          <span class="ctl punct-pop-wrap">
+            <button class="tg" :class="{ on: bodyPopOpen }" @click.stop="toggleBodyPop">正文</button>
+            <div v-if="bodyPopOpen" class="punct-pop typography-pop volume-body-pop" @click.stop>
+              <label class="pop-row">
+                <span>正文字号</span>
+                <select v-model.number="volBodySize">
+                  <option v-for="s in BODY_SIZES" :key="s.label" :value="s.px">{{ s.label }}</option>
+                </select>
+              </label>
+              <label class="pop-row">
+                <span>正文字体</span>
+                <select v-model="volBodyFont">
+                  <option v-for="f in FONT_FAMILIES" :key="f.label" :value="f.value">{{ f.label }}</option>
+                </select>
+              </label>
+            </div>
           </span>
-          <span class="ctl" :title="bindingOffset > 15 || bindingOffset < 0 ? '物理可行范围 0~15mm（距纸张边缘向内），已夹紧' : ''">
-            装订线距纸边
-            <input type="number" min="0" max="15" step="0.5" v-model.number="bindingOffset" style="width:60px">
-            mm
+          <!-- 世系图展示选项（气泡，与句读同款交互） -->
+          <span class="ctl punct-pop-wrap">
+            <button class="tg" :class="{ on: treePopOpen }" @click.stop="toggleTreePop">世系图</button>
+            <div v-if="treePopOpen" class="punct-pop tree-pop" @click.stop>
+              <label class="pop-row">
+                <span>排行</span>
+                <button class="sw" :class="{ on: volShowRank }" @click="volShowRank = !volShowRank"><i></i></button>
+              </label>
+              <label class="pop-row">
+                <span>承继</span>
+                <button class="sw" :class="{ on: volShowInherit }" @click="volShowInherit = !volShowInherit"><i></i></button>
+              </label>
+              <label class="pop-row">
+                <span>配偶</span>
+                <button class="sw-text" :class="{ on: volSpouseFormat === 'surname' }"
+                        @click="volSpouseFormat = volSpouseFormat === 'full' ? 'surname' : 'full'">
+                  {{ volSpouseFormat === 'full' ? '全名' : '某氏' }}
+                </button>
+              </label>
+              <label class="pop-row">
+                <span>主字号</span>
+                <input type="range" min="12" max="28" v-model.number="volTreeMainSize">
+                <b class="pop-val">{{ volTreeMainSize }}</b>
+              </label>
+              <label class="pop-row">
+                <span>辅字号</span>
+                <input type="range" min="8" max="20" v-model.number="volTreeAuxSize">
+                <b class="pop-val">{{ volTreeAuxSize }}</b>
+              </label>
+              <label class="pop-row">
+                <span>左右间距</span>
+                <input type="range" min="16" max="80" v-model.number="volTreeGapX">
+                <b class="pop-val">{{ volTreeGapX }}</b>
+              </label>
+              <label class="pop-row">
+                <span>层距</span>
+                <input type="range" min="36" max="110" v-model.number="volTreeGapY">
+                <b class="pop-val">{{ volTreeGapY }}</b>
+              </label>
+            </div>
           </span>
-          <span class="ctl" v-if="bindingType === 'staple'">
-            钉数
-            <input type="number" min="2" max="5" step="1" v-model.number="stapleCount" style="width:48px">
+          <!-- 世系录排版选项（与谱书一致，参数独立） -->
+          <span class="ctl punct-pop-wrap">
+            <button class="tg" :class="{ on: typographyPopOpen }" @click.stop="toggleTypographyPop">世系录</button>
+            <div v-if="typographyPopOpen" class="punct-pop typography-pop volume-register-pop" @click.stop>
+              <label class="pop-row">
+                <span>姓名字号</span>
+                <select v-model.number="volRegNameSize">
+                  <option v-for="s in NAME_SIZES" :key="s.label" :value="s.px">{{ s.label }}</option>
+                </select>
+              </label>
+              <label class="pop-row">
+                <span>传文字号</span>
+                <select v-model.number="volRegBioSize">
+                  <option v-for="s in BIO_SIZES" :key="s.label" :value="s.px">{{ s.label }}</option>
+                </select>
+              </label>
+              <label class="pop-row">
+                <span>传文行距</span>
+                <input type="range" min="1" max="2" step="0.05" v-model.number="volRegBioLh">
+                <b class="pop-val">{{ volRegBioLh.toFixed(2) }}</b>
+              </label>
+              <label class="pop-row">
+                <span>姓名字体</span>
+                <select v-model="volRegNameFont">
+                  <option v-for="f in FONT_FAMILIES" :key="f.label" :value="f.value">{{ f.label }}</option>
+                </select>
+              </label>
+              <label class="pop-row">
+                <span>传文字体</span>
+                <select v-model="volRegBioFont">
+                  <option v-for="f in FONT_FAMILIES" :key="f.label" :value="f.value">{{ f.label }}</option>
+                </select>
+              </label>
+            </div>
           </span>
-          <span class="ctl" v-if="bindingType === 'sewing'">
-            槽孔
-            <input type="number" min="3" max="12" step="1" v-model.number="sewingHoles" style="width:48px">
+          <!-- 装订选项（气泡） -->
+          <span class="ctl punct-pop-wrap">
+            <button class="tg" :class="{ on: bindingType !== 'none' }" @click.stop="toggleBindingPop">装订</button>
+            <div v-if="bindingPopOpen" class="punct-pop bind-pop" @click.stop>
+              <label class="pop-row">
+                <span>装订方式</span>
+                <select v-model="bindingType">
+                  <option value="none">不装订</option>
+                  <option value="staple">骑马钉</option>
+                  <option value="sewing">锁线装</option>
+                  <option value="perfect">胶装</option>
+                </select>
+              </label>
+              <label class="pop-row" :title="bindingOffset > 15 || bindingOffset < 0 ? '物理可行范围 0~15mm（距纸张边缘向内），已夹紧' : ''">
+                <span>装订线距纸边</span>
+                <span class="pop-inline">
+                  <input type="number" min="0" max="15" step="0.5" v-model.number="bindingOffset"> mm
+                </span>
+              </label>
+              <label class="pop-row" v-if="bindingType === 'staple'">
+                <span>钉数</span>
+                <input type="number" min="2" max="5" step="1" v-model.number="stapleCount">
+              </label>
+              <label class="pop-row" v-if="bindingType === 'sewing'">
+                <span>槽孔</span>
+                <input type="number" min="3" max="12" step="1" v-model.number="sewingHoles">
+              </label>
+            </div>
           </span>
           <span class="ctl punct-pop-wrap">
             <button class="tg" :class="{ on: curEnablePunct }" @click.stop="togglePunctPop">句读</button>
@@ -668,6 +869,23 @@ html, body { margin: 0; height: 100%; font-family: sans-serif; }
 .sw.on { background: #9C3E28; border-color: #7E2F1F; }
 .sw.on i { transform: translateX(16px); }
 .pop-row input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid #D8B48A; border-radius: 4px; background: #FFF; cursor: pointer; }
+/* 世系图气泡：滑杆行 + 数值 */
+.tree-pop { min-width: 260px; }
+.typography-pop { min-width: 260px; }
+.bind-pop { min-width: 230px; }
+.pop-row input[type=range] { flex: 1; min-width: 90px; }
+.pop-val { min-width: 20px; text-align: right; font-size: 12px; color: #9C3E28; }
+.pop-row select, .pop-row input[type=number] {
+  padding: 2px 6px; border: 1px solid #D8B48A; border-radius: 4px;
+  font-size: 12px; color: #5A4632; background: #FFF;
+}
+.pop-row input[type=number] { width: 54px; }
+.pop-inline { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #5A4632; }
+.sw-text {
+  padding: 2px 10px; border: 1px solid #D8B48A; border-radius: 10px;
+  background: #EFE3D0; font-size: 11px; color: #5A4632; cursor: pointer;
+}
+.sw-text.on { background: #9C3E28; color: #FFF4E0; border-color: #7E2F1F; }
 .pop-swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #E0CDB4; }
 .swatch { width: 26px; height: 22px; padding: 0; border: 1px solid #D8B48A; border-radius: 4px; font-size: 10px; color: #3a2a1a; cursor: pointer; line-height: 20px; text-align: center; }
 .swatch.active { outline: 2px solid #9C3E28; outline-offset: 1px; }

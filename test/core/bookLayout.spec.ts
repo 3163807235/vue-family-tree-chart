@@ -277,3 +277,44 @@ describe('runBookLayout 传文行距（bioLineSpacing）', () => {
     expect(p.width).toBeCloseTo(COL_W, 1)
   })
 })
+
+describe('runBookLayout 世系录句读连排', () => {
+  it('句读开启：标点不占正文字位，后续文字按正常行距紧接', () => {
+    const r = runBookLayout(mk('a', '周邦', '甲，乙。丙'), OPTS)
+    const chars = r.pages[0].people[0].bioChars
+    expect(chars.map(c => c.ch).join('')).toBe('甲，乙。丙')
+    const [a, comma, b, dot, c] = chars
+    expect(b.y - a.y).toBeCloseTo(19.55, 2)
+    expect(c.y - b.y).toBeCloseTo(19.55, 2)
+    expect(comma.y).toBeCloseTo(a.y + 19.55, 2)
+    expect(dot.y).toBeCloseTo(b.y + 19.55, 2)
+    expect(comma.dy).toBeDefined()
+    expect(dot.dy).toBeDefined()
+  })
+
+  it('列末句读仍挂前列末字，下一正字才换新竖行', () => {
+    const baseline = runBookLayout(mk('a', '周邦', bioOf(200)), OPTS)
+    const baselineChars = baseline.pages[0].people[0].bioChars
+    const cap = baselineChars.filter(c => c.x === baselineChars[0].x).length
+    const r = runBookLayout(mk('a', '周邦', '甲'.repeat(cap) + '，乙'), OPTS)
+    const chars = r.pages[0].people[0].bioChars
+    const prev = chars[cap - 1]
+    const punct = chars[cap]
+    const next = chars[cap + 1]
+    expect(punct.ch).toBe('，')
+    expect(punct.x).toBe(prev.x)
+    expect(punct.y).toBeCloseTo(prev.y + 19.55, 2)
+    expect(next.ch).toBe('乙')
+    expect(next.x).toBeLessThan(prev.x)
+    expect(next.y).toBe(chars[0].y)
+  })
+
+  it('句读关闭：标点继续整格占位，保持传统排版', () => {
+    const r = runBookLayout(mk('a', '周邦', '甲，乙。丙'), { ...OPTS, enablePunct: false })
+    const [a, comma, b, dot, c] = r.pages[0].people[0].bioChars
+    expect(b.y - a.y).toBeCloseTo(39.1, 2)
+    expect(c.y - b.y).toBeCloseTo(39.1, 2)
+    expect(comma.dy).toBeUndefined()
+    expect(dot.dy).toBeUndefined()
+  })
+})

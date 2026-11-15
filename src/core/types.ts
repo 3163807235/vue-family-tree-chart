@@ -319,6 +319,12 @@ export interface BookLayoutOptions {
   bioSize?: number
   /** 传文行距倍数（竖排换行时竖行间的左右间距），默认 1.15 */
   bioLineSpacing?: number
+  /** 姓名大字字体族，默认浏览器默认字体 */
+  nameFontFamily?: string
+  /** 姓名大字字重，默认 bold */
+  nameFontWeight?: string | number
+  /** 传文小字字体族，默认浏览器默认字体 */
+  bioFontFamily?: string
   /** @deprecated 已不生效：半叶十格自版框外缘至版心严格等分（书眉格即最右一格），格宽不再可配 */
   gridColWidth?: number
   /** 版心（书口）竖条宽度 */

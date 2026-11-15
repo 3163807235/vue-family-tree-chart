@@ -3,7 +3,7 @@
 // 两遍法解决「总目页码依赖自身页数」的循环：
 //   第一遍：按章节顺序预算各章起始叶序/叶码（总目页数由条目数直接算出，不渲染）；
 //   第二遍：流式装配，总目据第一遍得到的真实叶码渲染，随后逐叶编叶码。
-// 前置页（封面、扉页）依「书衣不编叶」之例：叶序照常递增（供跳转定位），但不计叶码。
+// 前置页（封面、扉页、总目）依「卷首不编叶」之例：叶序照常递增（供跳转定位），但不计叶码。
 import type { BookLayoutOptions, FamilyNode } from '../types'
 import { runBookLayout } from '../bookLayout'
 import {
@@ -45,6 +45,8 @@ export interface AssembleOptions {
 
 const isFront = (ch: ChapterSpec) => ch.content.type === 'cover' || ch.content.type === 'titlePage'
 const isToc = (ch: ChapterSpec) => ch.content.type === 'toc'
+/** 前置页（卷首）：封面、扉页、总目均占叶序但不编叶码 */
+const isFrontMatter = (ch: ChapterSpec) => isFront(ch) || isToc(ch)
 
 /** 遍历树（先序，与世系录世序一致） */
 function walkTree(node: FamilyNode, out: string[], names: Map<string, string>): void {
@@ -122,26 +124,49 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
     return blocks
   }
 
-  /** 世系图：按幅切片（一叶一幅），渲染层按 TreeTile 绘制 */
+  /**
+   * 世系图：按幅切片，每半叶一幅（右半叶为奇数页、左半叶为偶数页），
+   * 一幅只在一页内排完，绝不越过中缝或版框；超出单叶容量的节点顺延到下一幅。
+   */
   const renderTree = (
     chapter: ChapterSpec,
     root: FamilyNode,
     tilesOpt?: TreeTileOptions
   ): RawPage[] => {
     const ctx = makeCtx(chapter)
-    const { tiles } = sliceTree(root, tilesOpt)
-    const multi = tiles.length > 1
-    return tiles.map((tile, i) => ({
-      chapterId: chapter.id,
-      chapterKind: chapter.kind,
-      chapterTitle: chapter.title,
-      isChapterStart: i === 0,
-      runningTitle: multi ? `${chapter.title}　${tile.label}` : chapter.title,
-      frame: ctx.geometry.frame,
-      spine: ctx.geometry.spine,
-      gridXs: [],
-      tree: tile
-    }))
+    const padding = tilesOpt?.padding ?? 40
+    // 半叶实际可用宽（与 FamilyTreeVolume 落版口径一致：版框内缘 5、距中缝 6）。
+    // 字号锁定为显示字号后不再整体缩放，幅宽必须按此上限切分，超宽即多切一幅。
+    const halfAvail = Math.min(
+      ctx.geometry.spine.left - 6 - (ctx.geometry.frame.left + 5),
+      ctx.geometry.frame.right - 5 - (ctx.geometry.spine.right + 6)
+    )
+    // 版框内高（世界单位）：每幅按此高度自动收代，能装几代装几代
+    const innerHeight = ctx.geometry.frame.bottom - ctx.geometry.frame.top - 10
+    const options: TreeTileOptions = {
+      // 幅的取景包围盒四周另加 padding，内容宽须先扣除
+      maxTileWidth: Math.max(200, Math.floor(halfAvail - padding * 2)),
+      maxTileHeight: innerHeight,
+      ...tilesOpt
+    }
+    const { tiles } = sliceTree(root, options)
+    const pages: RawPage[] = []
+    // 每叶容纳两幅：先右半叶（奇数页），后左半叶（偶数页）
+    for (let i = 0; i < tiles.length; i += 2) {
+      pages.push({
+        chapterId: chapter.id,
+        chapterKind: chapter.kind,
+        chapterTitle: chapter.title,
+        isChapterStart: i === 0,
+        runningTitle: null,
+        frame: ctx.geometry.frame,
+        spine: ctx.geometry.spine,
+        gridXs: [],
+        tree: tiles[i],
+        ...(tiles[i + 1] ? { treeLeft: tiles[i + 1] } : {})
+      })
+    }
+    return pages
   }
 
   /** 世系录：直接复用牒记式排版引擎，页面几何由成册统一设置 */
@@ -245,8 +270,10 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
       if (rp.plates) {
         for (const p of rp.plates) out.push({ title: p.title, anchor: p.plateId, pageOffset: i })
       }
-      if (rp.tree) {
-        out.push({ title: rp.tree.label, anchor: `tile:${rp.tree.tileIndex}`, pageOffset: i })
+      if (rp.tree || rp.treeLeft) {
+        for (const t of [rp.tree, rp.treeLeft]) {
+          if (t) out.push({ title: t.label, anchor: `tile:${t.tileIndex}`, pageOffset: i })
+        }
       }
       if (rp.register) {
         for (const g of rp.register.genLabels) {
@@ -299,7 +326,7 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
     startDisp.set(ch.id, dispBudget)
     const count = isToc(ch) ? tocPages : rawByChapter.get(ch.id)?.length ?? 0
     leafBudget += count
-    if (!isFront(ch)) dispBudget += count
+    if (!isFrontMatter(ch)) dispBudget += count
   }
 
   // 卷次：仅整谱分册装订时由 ChapterSpec.ordinal 显式给出（如「卷一」）；单册不编卷、总目不冠卷次
@@ -365,7 +392,7 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
     const raw: RawPage[] = isToc(ch)
       ? paginateToc(tocEntries, makeCtx(ch))
       : rawByChapter.get(ch.id) ?? []
-    const front = isFront(ch)
+    const front = isFrontMatter(ch)
     for (const rp of raw) {
       const leafNumber = front ? '' : toChineseNum(disp + 1)
       // 筒子页两半叶各编页码（一叶两页）：右半叶为正面＝奇数页，左半叶为背面＝偶数页
@@ -423,9 +450,10 @@ export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): Vo
         if (!e.registerLeaf) e.registerLeaf = page.leafNumber
       }
     }
-    if (page.tree) {
+    for (const t of [page.tree, page.treeLeft]) {
+      if (!t) continue
       // 分幅后同一人物可能跨幅，取首幅叶码
-      for (const node of page.tree.nodes) {
+      for (const node of t.nodes) {
         const e = entryFor(node.id, node.name)
         if (!e.treeLeaf) e.treeLeaf = page.leafNumber
       }

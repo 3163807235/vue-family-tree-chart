@@ -149,7 +149,15 @@ function layoutVerticalChars(
   let y = startY
   let colIdx = 0
   let firstInCol = true
+  let punctRun = 0
   for (const ch of text) {
+    // 句读点挂在前列末字右下角，不占下一个正字字位；即使前列已满也不另起一列
+    if (enablePunct && !firstInCol && SINK_PUNCT.has(ch)) {
+      const stack = Math.min(punctRun, 2) * lineH * PUNCT_STACK
+      chars.push(placeChar(ch, x, Math.min(y + stack, maxY + lineH), size, false, true))
+      punctRun += 1
+      continue
+    }
     if (y > maxY) {
       const nextX = x - stepX
       // 换新竖行后行左缘越过硬左界则截断
@@ -162,6 +170,7 @@ function layoutVerticalChars(
     chars.push(placeChar(ch, x, y, size, firstInCol, enablePunct))
     y += lineH
     firstInCol = false
+    punctRun = 0
   }
   return { chars, cols: colIdx + 1 }
 }
@@ -189,6 +198,8 @@ const PUNCT_INK_HALF = 0.175
 const PUNCT_INK_BOTTOM = 0.53
 /** 标点墨迹横向落点：前字右缘外侧（自字心计，字身），落在字列右缘的空白带里 */
 const PUNCT_INK_X = 0.72
+/** 连续句读点依次下错的步距（行高的倍数，与其他正文一致） */
+const PUNCT_STACK = 0.3
 
 const PUNCT_DX = PUNCT_INK_X - (PUNCT_INK_CX - 0.5) * PUNCT_SCALE
 const PUNCT_DY =
@@ -199,8 +210,7 @@ const PUNCT_DY =
  * 标点标记 punct:true 并置独立字号；句读点（SINK）在 enablePunct=true 时
  * 另记字形偏移 dx/dy，使墨迹落在前一字的右下角，与正文同号；
  * enablePunct=false 时不偏移，标点居中占格。
- * 因不改字位、行高与竖行步距，故不压字、不影响分行与容量计算；
- * 列首标点保持在格中。
+ * 连排时句读点不占正文字位；列首标点无前字可依，仍保持在格中。
  */
 function placeChar(
   ch: string,

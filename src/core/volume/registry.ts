@@ -10,13 +10,13 @@ import type {
   VolumePlan
 } from './types'
 
-/** 标准家谱章节装订顺序（卷首 → 正文 → 卷末） */
+/** 标准家谱章节装订顺序（卷首 → 正文 → 卷末）：总目紧随扉页，属卷首前置页 */
 export const STANDARD_CHAPTER_ORDER: ChapterKind[] = [
   'cover',
   'titlePage',
+  'toc',
   'preface',
   'editorialNotes',
-  'toc',
   'honor',
   'genPoem',
   'treeDiagram',

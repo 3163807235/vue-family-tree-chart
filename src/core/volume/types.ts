@@ -102,13 +102,18 @@ export interface PlateItem {
 
 /**
  * 世系图分幅参数
- * - maxDepthPerTile：每幅最多代数（按辈分纵切）
- * - maxTileWidth：每幅最大世界宽度（同带内过宽时再横向切分）
+ * - maxDepthPerTile：每幅最多代数（按辈分纵切），默认不限——能装几代装几代，由版面高度与横向容量决定
+ * - maxTileWidth：每幅最大世界宽度（同带内过宽时再横向切分），成册装配默认取半叶实际可用宽
+ * - maxNodesPerTile：每幅节点数上限，默认不限；横向容量由版宽与节点单元宽（含配偶列）自动换算
  * - overlapDepth：相邻幅重叠代数（骑缝人物，便于上下幅对照）
  */
 export interface TreeTileOptions {
   maxDepthPerTile?: number
   maxTileWidth?: number
+  /** 每幅最大高度（世界单位，含取景留白）：按代收幅，装不下就留给下一幅；成册装配默认取版框内高 */
+  maxTileHeight?: number
+  /** 每幅节点数上限（人物节点，不含配偶小字）：默认不限，仅显式设置时按长幼顺序另起一幅 */
+  maxNodesPerTile?: number
   overlapDepth?: number
   /** 取景留白（世界单位），默认 40 */
   padding?: number
@@ -117,6 +122,12 @@ export interface TreeTileOptions {
   gapY?: number
   mainSize?: number
   auxSize?: number
+  /** 是否显示排行（长子/次子…），默认 true（与图谱开关一致） */
+  showRank?: boolean
+  /** 是否显示承继（过继/兼祧…），默认 true（与图谱开关一致） */
+  showInherit?: boolean
+  /** 配偶显示格式：full 完整姓名（默认）/ surname 某氏（「王秀英」→「王氏」），同图谱 */
+  spouseFormat?: 'full' | 'surname'
 }
 
 /** 分幅包围盒（世界坐标，已含留白） */
@@ -140,8 +151,27 @@ export interface TreeTile {
   overlapIds: string[]
   /** 本幅下方是否还有续幅 */
   continuesNext: boolean
+  /** 本幅所属代带的起始世代：同代带切出的诸幅同值，跨代带续排时不做按世对齐 */
+  bandStart: number
+  /** 本幅最浅（最早）的一代世代号 */
+  topDepth: number
+  /** 本幅首行节点文字上缘的世界 y：同一叶两幅据此纵向对齐，使同世齐平 */
+  topY: number
   /** 本幅布局所用主字号（世界单位，渲染时同用此字号） */
   mainSize: number
+  /** 本幅布局所用辅字号（配偶等辅助信息，世界单位） */
+  auxSize: number
+  /** 是否显示排行（本幅已解析的开关值） */
+  showRank: boolean
+  /** 是否显示承继（本幅已解析的开关值） */
+  showInherit: boolean
+  /** 配偶显示格式（本幅已解析的值） */
+  spouseFormat: 'full' | 'surname'
+  /**
+   * 中缝分栏线（世界坐标 x）：筒子页渲染时以此线对准版心，左右半叶各显示一半，
+   * 取值为幅内相邻两节点之间的空隙，保证没有节点被中缝切断
+   */
+  splitX: number
 }
 
 /** 章节小节（多级总目的「节」级条目；explicit 时覆盖自动提取） */
@@ -427,8 +457,10 @@ export interface VolumePage {
   gridXs: number[]
   /** 世系录页：直接复用 runBookLayout 的结果 */
   register?: BookPage
-  /** 世系图页：单幅分切结果，组件据此绘制 */
+  /** 世系图页（右半叶，奇数页）：单幅分切结果，组件据此绘制 */
   tree?: TreeTile
+  /** 世系图页（左半叶，偶数页）：同一叶背面的另一幅，缺省则左半叶留白 */
+  treeLeft?: TreeTile
   text?: TextPageContent
   plates?: PlatePlacement[]
   cover?: CoverPageContent

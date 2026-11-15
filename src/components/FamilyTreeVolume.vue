@@ -3,7 +3,9 @@
 // 版框、乌丝栏、版心鱼尾、书眉、叶码均自立绘制，与 FamilyTreeBook 同一版刻行款。
 import { computed } from 'vue'
 import { assembleVolume } from '../core/volume/assemble'
+import { treeGenerationLabel, treeNameSpans, treeNodeExtras } from '../core/volume/treeTiles'
 import type { CustomRenderer, VolumePage, VolumePlan } from '../core/volume/types'
+import type { TreeTile } from '../core/volume/types'
 import type { BookPage } from '../core/types'
 
 const props = defineProps<{
@@ -20,11 +22,20 @@ const emit = defineEmits<{
 
 const result = computed(() => assembleVolume(props.plan, { customRenderers: props.customRenderers }))
 
+/** 正文字体只作用于正文与署名，章节标题继续使用标题字体/系统默认 */
+const bodyFontFamily = computed(() => props.plan.fonts?.bodyFontFamily || undefined)
+
 /** 世系录字号（取自该章 options，缺省与 FamilyTreeBook 默认一致） */
 const regStyle = computed(() => {
   const ch = props.plan.chapters.find(c => c.content.type === 'register')
   const opt = ch && ch.content.type === 'register' ? ch.content.options : undefined
-  return { nameSize: opt?.nameSize ?? 28, bioSize: opt?.bioSize ?? 14 }
+  return {
+    nameSize: opt?.nameSize ?? 28,
+    bioSize: opt?.bioSize ?? 14,
+    nameFontFamily: opt?.nameFontFamily || undefined,
+    nameFontWeight: opt?.nameFontWeight ?? 'bold',
+    bioFontFamily: opt?.bioFontFamily || undefined
+  }
 })
 
 /** 半叶单列宽（世系标签墨牌宽度约束用） */
@@ -64,13 +75,6 @@ const spineTitle = computed(() => {
   return Array.from(props.plan.title || '').map((ch, i) => ({ ch, y: top + i * lh }))
 })
 
-function treeViewBox(page: VolumePage): string {
-  const t = page.tree
-  if (!t) return '0 0 1 1'
-  const b = t.bounds
-  return `${b.minX} ${b.minY} ${Math.max(1, b.maxX - b.minX)} ${Math.max(1, b.maxY - b.minY)}`
-}
-
 function frameBox(page: VolumePage) {
   return {
     innerX: page.frame.left + 5,
@@ -78,6 +82,135 @@ function frameBox(page: VolumePage) {
     innerW: page.frame.right - page.frame.left - 10,
     innerH: page.frame.bottom - page.frame.top - 10
   }
+}
+
+/**
+ * 同一叶两幅的纵向偏移（世界单位）：筒子页左右两半同版对读，
+ * 同代带切出的两幅以较浅一幅的首行为基准，把较深一幅整体下移，使同一世代左右齐平；
+ * 跨代带续排（各自顶格成幅）不施偏移。
+ */
+function treeOffsets(page: VolumePage) {
+  const r = page.tree
+  const l = page.treeLeft
+  if (!r || !l || r.bandStart !== l.bandStart) return { right: 0, left: 0 }
+  const ref = Math.min(r.topY, l.topY)
+  return { right: r.topY - ref, left: l.topY - ref }
+}
+
+/**
+ * 世系图缩放：锁定显示字号——主/辅字号即最终屏幕字号（比例恒为 1），
+ * 间距、节点容量只影响分幅与页数（超宽超高由 sliceTree 按半叶尺寸自动多切一幅），不再带动字号变化。
+ * 仅在极端情况下（如单行世代高过版框、无法再继续切分）才兜底缩小，避免文字越出版框。
+ */
+const treeScale = computed(() => {
+  const gap = 6
+  let s = Infinity
+  for (const p of result.value.pages) {
+    if (!p.tree && !p.treeLeft) continue
+    const f = frameBox(p)
+    const halfW = Math.min(
+      p.spine.left - gap - f.innerX,
+      p.frame.right - 5 - (p.spine.right + gap)
+    )
+    const offs = treeOffsets(p)
+    for (const t of [p.tree, p.treeLeft]) {
+      if (!t) continue
+      const b = t.bounds
+      const off = t === p.tree ? offs.right : offs.left
+      s = Math.min(
+        s,
+        f.innerH / Math.max(1, off + b.maxY - b.minY),
+        halfW / Math.max(1, b.maxX - b.minX)
+      )
+    }
+  }
+  if (!Number.isFinite(s) || s <= 0) return 1
+  return Math.min(1, s)
+})
+
+/** 半叶世系图取景区：一幅只排在一页之内（右半叶=奇数页，左半叶=偶数页），不跨中缝；同一叶两幅共用统一比例 */
+function treeBoxes(page: VolumePage) {
+  const f = frameBox(page)
+  const gap = 6
+  const s = treeScale.value
+  const offs = treeOffsets(page)
+  const out: Array<{ key: string; tile: TreeTile; x: number; y: number; w: number; h: number }> = []
+  if (page.tree) {
+    const left = page.spine.right + gap
+    const halfW = Math.max(1, page.frame.right - 5 - left)
+    const w = Math.max(1, (page.tree.bounds.maxX - page.tree.bounds.minX) * s)
+    const h = Math.max(1, (page.tree.bounds.maxY - page.tree.bounds.minY) * s)
+    out.push({
+      key: 'right',
+      tile: page.tree,
+      x: left + (halfW - w) / 2,
+      y: f.innerY + offs.right * s,
+      w,
+      h
+    })
+  }
+  if (page.treeLeft) {
+    const halfW = Math.max(1, page.spine.left - gap - f.innerX)
+    const w = Math.max(1, (page.treeLeft.bounds.maxX - page.treeLeft.bounds.minX) * s)
+    const h = Math.max(1, (page.treeLeft.bounds.maxY - page.treeLeft.bounds.minY) * s)
+    out.push({
+      key: 'left',
+      tile: page.treeLeft,
+      x: f.innerX + (halfW - w) / 2,
+      y: f.innerY + offs.left * s,
+      w,
+      h
+    })
+  }
+  return out
+}
+
+/**
+ * 右侧版框世代标签栏：本幅出现的每个世代均显示，标签靠近每半叶右内缘并与该世对齐。
+ * 同幅同世共用一枚标签，避免相同标签在版框边重复重叠。
+ */
+function treeRailLabels(
+  page: VolumePage,
+  tb: { key: string; tile: TreeTile; x: number; y: number; w: number; h: number }
+) {
+  const s = treeScale.value
+  const rightEdge = tb.key === 'right' ? page.frame.right - 5 : page.spine.left - 6
+  const seen = new Set<number>()
+  const out = []
+  for (const n of tb.tile.nodes) {
+    const label = treeGenerationLabel(n)
+    if (!label || seen.has(n.depth)) continue
+    seen.add(n.depth)
+    const w = label.width * s
+    const h = label.height * s
+    const x = rightEdge - 8 - w
+    const centerY = tb.y + (n.y - tb.tile.bounds.minY) * s
+    out.push({
+      depth: n.depth,
+      text: label.text,
+      x,
+      y: centerY - h / 2,
+      width: w,
+      height: h,
+      radius: label.radius * s,
+      border: Math.max(0.5, label.border * s),
+      fontSize: label.fontSize * s,
+      chars: label.chars.map(c => ({ ch: c.ch, x: x + w / 2, y: centerY + c.y * s }))
+    })
+  }
+  return out.sort((a, b) => a.depth - b.depth)
+}
+
+/** 半叶取景框：按本幅包围盒等比取景 */
+function treeViewBox(tile: TreeTile): string {
+  const b = tile.bounds
+  return `${b.minX} ${b.minY} ${Math.max(1, b.maxX - b.minX)} ${Math.max(1, b.maxY - b.minY)}`
+}
+
+/** 世系图节点绘制计划：节点 + 排行/承继/配偶的竖排版式（仅展示层计算） */
+function treePlans(t: TreeTile) {
+  const aux = { showRank: t.showRank, showInherit: t.showInherit, spouseFormat: t.spouseFormat }
+  return t.nodes.map(n => ({ n, ex: treeNodeExtras(n, t.mainSize, t.auxSize, aux) }))
 }
 
 function onTocClick(page: VolumePage) {
@@ -301,7 +434,7 @@ function gridLines(page: VolumePage): number[] {
             <tspan v-for="(c, i) in page.text.heading.chars" :key="'h' + i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <text v-for="(col, ci) in page.text.columns" :key="'c' + ci" text-anchor="middle"
-                :style="{ fontSize: col.size + 'px', fill: '#1a1208' }">
+                :style="{ fontSize: col.size + 'px', fill: '#1a1208', fontFamily: bodyFontFamily }">
             <tspan v-for="(c, i) in col.chars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <text v-for="(s, si) in page.text.subheadings" :key="'s' + si" text-anchor="middle"
@@ -309,7 +442,7 @@ function gridLines(page: VolumePage): number[] {
             <tspan v-for="(c, i) in s.chars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
           <text v-for="(s, si) in page.text.signatures" :key="'sg' + si" text-anchor="middle"
-                :style="{ fontSize: s.size + 'px', fill: '#3a2a1a' }">
+                :style="{ fontSize: s.size + 'px', fill: '#3a2a1a', fontFamily: bodyFontFamily }">
             <tspan v-for="(c, i) in s.chars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
           </text>
         </g>
@@ -334,17 +467,62 @@ function gridLines(page: VolumePage): number[] {
           </template>
         </g>
 
-        <!-- ===== 世系图（一叶一幅，按本幅包围盒取景） ===== -->
-        <svg v-else-if="page.tree" :x="frameBox(page).innerX" :y="frameBox(page).innerY"
-             :width="frameBox(page).innerW" :height="frameBox(page).innerH"
-             :viewBox="treeViewBox(page)" preserveAspectRatio="xMidYMid meet" class="ftc-volume-tree">
-          <g stroke="#A97F4F" stroke-width="2" fill="none" opacity="0.7">
-            <path v-for="(e, i) in page.tree.edges" :key="'e' + i" :d="e.d" />
+        <!-- ===== 世系图（一叶两幅：先右半叶奇数页、后左半叶偶数页，各幅只排在本页之内） ===== -->
+        <template v-else-if="page.tree || page.treeLeft">
+          <!-- 书眉：两半叶各在自己的外口标本幅题名 -->
+          <text v-if="page.tree" :x="page.frame.right" :y="page.frame.top - 22"
+                text-anchor="end" class="ftc-volume-running">{{ page.chapterTitle }}　{{ page.tree.label }}</text>
+          <text v-if="page.treeLeft" :x="page.frame.left" :y="page.frame.top - 22"
+                text-anchor="start" class="ftc-volume-running">{{ page.chapterTitle }}　{{ page.treeLeft.label }}</text>
+          <svg v-for="tb in treeBoxes(page)" :key="'tree-' + tb.key" :x="tb.x" :y="tb.y"
+               :width="tb.w" :height="tb.h" :viewBox="treeViewBox(tb.tile)"
+               preserveAspectRatio="xMidYMin meet" class="ftc-volume-tree">
+            <g stroke="#A97F4F" stroke-width="2" fill="none" opacity="0.7">
+              <path v-for="(e, i) in tb.tile.edges" :key="'e' + i" :d="e.d" />
+            </g>
+            <!-- 姓名竖排：逐字下落于节点中心列（版式与图画 DefaultNode 一致） -->
+            <g v-for="it in treePlans(tb.tile)" :key="'n' + it.n.id">
+              <text text-anchor="middle"
+                    :style="{ fontSize: tb.tile.mainSize + 'px', fill: '#1a1208', fontWeight: 600 }">
+                <tspan v-for="(c, i) in treeNameSpans(it.n.name, tb.tile.mainSize).chars" :key="i"
+                       :x="it.n.x" :y="it.n.y + c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              </text>
+              <!-- 排行（姓名右侧）/ 承继（姓名左侧）：竖排小字 -->
+              <text v-if="it.ex.rank.length" text-anchor="middle" style="font-size: 9px; fill: #6b4a2a">
+                <tspan v-for="(c, i) in it.ex.rank" :key="i"
+                       :x="it.n.x + 8" :y="it.n.y + c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              </text>
+              <text v-if="it.ex.inherit.length" text-anchor="middle" style="font-size: 9px; fill: #6b4a2a">
+                <tspan v-for="(c, i) in it.ex.inherit" :key="i"
+                       :x="it.n.x - 8" :y="it.n.y + c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              </text>
+              <!-- 配偶：姓名右侧逐列竖排 -->
+              <text v-for="(sp, si) in it.ex.spouses" :key="'sp' + si" text-anchor="middle"
+                    :style="{ fontSize: tb.tile.auxSize + 'px', fill: '#3a2a1a' }">
+                <tspan v-for="(c, i) in sp.chars" :key="i"
+                       :x="it.n.x + sp.x" :y="it.n.y + c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              </text>
+            </g>
+          </svg>
+          <!-- 靠近右侧版框的逐世标签栏：本幅所有世代均显示 -->
+          <g v-for="tb in treeBoxes(page)" :key="'gen-rail-' + tb.key" class="ftc-volume-leaf-gen">
+            <g v-for="label in treeRailLabels(page, tb)" :key="'leaf-gen-' + tb.key + '-' + label.depth">
+              <rect :x="label.x" :y="label.y" :width="label.width" :height="label.height"
+                    :rx="label.radius" :ry="label.radius"
+                    fill="#FFF2DE" stroke="#D9A46A" :stroke-width="label.border" />
+              <text text-anchor="middle"
+                    :style="{
+                      fontSize: label.fontSize + 'px',
+                      fill: '#9C3E28',
+                      fontWeight: 600,
+                      fontFamily: `'PingFang SC', 'Microsoft YaHei', sans-serif`
+                    }">
+                <tspan v-for="(c, i) in label.chars" :key="i"
+                       :x="c.x" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+              </text>
+            </g>
           </g>
-          <text v-for="n in page.tree.nodes" :key="n.id" :x="n.x" :y="n.y"
-                text-anchor="middle" dominant-baseline="central"
-                :style="{ fontSize: page.tree.mainSize + 'px', fill: '#1a1208', fontWeight: 600 }">{{ n.name }}</text>
-        </svg>
+        </template>
 
         <!-- ===== 世系录（牒记式，复用 BookPage 数据） ===== -->
         <g v-else-if="page.register" class="ftc-volume-register">
@@ -361,25 +539,25 @@ function gridLines(page: VolumePage): number[] {
                   :width="genBadgeW" :height="genBadgeH"
                   :rx="genBadgeRadius" :ry="genBadgeRadius" fill="#1a1208" />
             <text text-anchor="middle"
-                  :style="{ fontSize: regStyle.nameSize + 'px', fill: '#FFFFFF', fontWeight: 'bold' }">
+                  :style="{ fontSize: regStyle.nameSize + 'px', fill: '#FFFFFF', fontWeight: regStyle.nameFontWeight, fontFamily: regStyle.nameFontFamily }">
               <tspan v-for="(c, i) in bp.chars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
           </g>
           <g v-for="(p, pi) in page.register.people" :key="'p' + pi + p.id">
             <text v-if="p.labelChars.length" text-anchor="middle"
-                  :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a' }">
+                  :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a', fontFamily: regStyle.bioFontFamily }">
               <tspan v-for="(c, i) in p.labelChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
             <text text-anchor="middle"
-                  :style="{ fontSize: regStyle.nameSize + 'px', fill: '#1a1208', fontWeight: 'bold' }">
+                  :style="{ fontSize: regStyle.nameSize + 'px', fill: '#1a1208', fontWeight: regStyle.nameFontWeight, fontFamily: regStyle.nameFontFamily }">
               <tspan v-for="(c, i) in p.nameChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
             <text v-if="p.contMarkChars.length" text-anchor="middle"
-                  :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a' }">
+                  :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a', fontFamily: regStyle.bioFontFamily }">
               <tspan v-for="(c, i) in p.contMarkChars" :key="i" :x="c.x" :y="c.y" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
             <text v-if="p.bioChars.length" text-anchor="middle"
-                  :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a' }">
+                  :style="{ fontSize: regStyle.bioSize + 'px', fill: '#3a2a1a', fontFamily: regStyle.bioFontFamily }">
               <tspan v-for="(c, i) in p.bioChars" :key="i" :x="c.x + (c.dx || 0)" :y="c.y + (c.dy || 0)" :font-size="c.size" :fill="fillOf(c)" dominant-baseline="central">{{ c.ch }}</tspan>
             </text>
           </g>

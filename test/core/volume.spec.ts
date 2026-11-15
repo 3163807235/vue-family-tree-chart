@@ -13,6 +13,7 @@ import {
   setChapterEnabled
 } from '../../src/core/volume/registry'
 import { normalizeBinding, computeBindingOnSpine, toChineseNum, computeVolumeGeometry, tocLeafCount } from '../../src/core/volume/paginate'
+import { sliceTree, treeGenerationLabel, treeNameSpans, treeNodeBox } from '../../src/core/volume/treeTiles'
 
 const tree: FamilyNode = {
   id: 'a',
@@ -120,13 +121,25 @@ describe('章节编排', () => {
 })
 
 describe('成册装配', () => {
-  it('封面扉页不编叶码，其后自「一」起', () => {
+  it('总目紧接扉页、不编叶码，正文自「一」起', () => {
     const result = assembleVolume(buildPlan())
     expect(result.pages[0].chapterKind).toBe('cover')
     expect(result.pages[0].leafNumber).toBe('')
     expect(result.pages[1].chapterKind).toBe('titlePage')
     expect(result.pages[1].leafNumber).toBe('')
-    expect(result.pages[2].leafNumber).toBe('一')
+    // 扉页之后即总目
+    expect(result.pages[2].chapterKind).toBe('toc')
+    const tocPages = result.pages.filter(p => p.chapterKind === 'toc')
+    expect(tocPages.length).toBeGreaterThan(0)
+    for (const p of tocPages) {
+      expect(p.leafNumber).toBe('')
+      expect(p.pageNumberLeft).toBe('')
+      expect(p.pageNumberRight).toBe('')
+    }
+    // 总目之后的正文首叶自「一」起，叶序紧接总目末叶
+    const firstBody = result.pages.find(p => p.chapterKind !== 'toc' && p.leafNumber !== '')
+    expect(firstBody!.leafNumber).toBe('一')
+    expect(firstBody!.leafIndex).toBe(tocPages[tocPages.length - 1].leafIndex + 1)
     // 叶序仍照常递增（供跳转定位）
     expect(result.pages.map(p => p.leafIndex)).toEqual(result.pages.map((_, i) => i))
     expect(result.totalLeaves).toBe(result.pages.length)
@@ -457,19 +470,22 @@ describe('世系图分幅', () => {
       ]
     })
     const result = assembleVolume(plan)
-    const treePages = result.pages.filter(p => p.tree)
-    expect(treePages.length).toBeGreaterThan(1)
+    const treePages = result.pages.filter(p => p.tree || p.treeLeft)
+    const tiles = treePages.flatMap(p => [p.tree, p.treeLeft].filter((t): t is NonNullable<typeof t> => !!t))
+    expect(tiles.length).toBeGreaterThan(1)
     expect(treePages[0].isChapterStart).toBe(true)
-    expect(treePages[0].runningTitle).toContain('第一幅')
+    // 每叶两幅：右半叶第一幅、左半叶第二幅（幅题随半叶书眉各自标注）
+    expect(treePages[0].tree!.label).toBe('第一幅')
+    expect(treePages[0].treeLeft?.label).toBe('第二幅')
 
     // 各幅节点并集＝全树九人（重叠不致丢失，只增骑缝）
-    const ids = new Set(treePages.flatMap(p => p.tree!.nodes.map(n => n.id)))
+    const ids = new Set(tiles.flatMap(t => t.nodes.map(n => n.id)))
     expect(ids.size).toBe(9)
 
     // 相邻幅重叠一代，供上下幅对照
-    expect(treePages[1].tree!.overlapIds.length).toBeGreaterThan(0)
+    expect(tiles[1].overlapIds.length).toBeGreaterThan(0)
     // 末幅不再标「续」
-    expect(treePages[treePages.length - 1].tree!.continuesNext).toBe(false)
+    expect(tiles[tiles.length - 1].continuesNext).toBe(false)
 
     // 世系图人物索引取首幅叶码，人人有值
     for (const e of result.personIndex) expect(e.treeLeaf).toBeTruthy()
@@ -498,12 +514,351 @@ describe('世系图分幅', () => {
       ]
     })
     const result = assembleVolume(plan)
-    const treePages = result.pages.filter(p => p.tree)
-    expect(treePages.length).toBeGreaterThan(1)
+    const tiles = result.pages.flatMap(p =>
+      [p.tree, p.treeLeft].filter((t): t is NonNullable<typeof t> => !!t)
+    )
+    expect(tiles.length).toBeGreaterThan(1)
     // 横向分幅不重复收录同一节点
-    const allIds = treePages.flatMap(p => p.tree!.nodes.map(n => n.id))
+    const allIds = tiles.flatMap(t => t.nodes.map(n => n.id))
     expect(new Set(allIds).size).toBe(13)
     expect(allIds.length).toBe(13)
+  })
+
+  it('缩小字号与间距后，单叶可承载更多世系节点', () => {
+    const root: FamilyNode = {
+      id: 'wide',
+      name: '始祖',
+      gender: 'm',
+      children: Array.from({ length: 11 }, (_, i) => ({
+        id: `w${i}`,
+        name: `子${i}`,
+        gender: 'm' as const
+      }))
+    }
+    const compact = sliceTree(root, { maxDepthPerTile: 8, maxTileWidth: 600 })
+    const legacy = sliceTree(root, {
+      maxDepthPerTile: 8,
+      maxTileWidth: 600,
+      mainSize: 26,
+      auxSize: 20,
+      gapX: 56,
+      gapY: 76
+    })
+    const maxNodes = (r: { tiles: { nodes: unknown[] }[] }) =>
+      Math.max(...r.tiles.map(t => t.nodes.length))
+    // 同一宽度上界下，成册版（小字号/紧凑间距）分幅更少、单幅节点更多
+    expect(compact.tiles.length).toBeLessThan(legacy.tiles.length)
+    expect(maxNodes(compact)).toBeGreaterThan(maxNodes(legacy))
+  })
+
+  it('单幅节点数封顶：超出按长幼（自左向右）顺次另起一叶', () => {
+    const wide: FamilyNode = {
+      id: 'r',
+      name: '始祖',
+      gender: 'm',
+      children: Array.from({ length: 20 }, (_, i) => ({
+        id: `k${i}`,
+        name: `子${i}`,
+        gender: 'm' as const
+      }))
+    }
+    const { tiles } = sliceTree(wide, {
+      maxTileWidth: 1e6,
+      maxDepthPerTile: 8,
+      maxNodesPerTile: 8
+    })
+    expect(tiles.length).toBeGreaterThan(1)
+    expect(tiles.every(t => t.nodes.length <= 8)).toBe(true)
+    // 节点只归一幅，无重复无遗漏
+    const ids = tiles.flatMap(t => t.nodes.map(n => n.id))
+    expect(new Set(ids).size).toBe(21)
+    expect(ids.length).toBe(21)
+  })
+
+  it('按房分页：长房整支居右先排，同叶两幅带起始代与首行 y 供按世对齐', () => {
+    const fam: FamilyNode = {
+      id: 'r',
+      name: '始祖',
+      gender: 'm',
+      children: [
+        { id: 'b', name: '长房', gender: 'm', children: [{ id: 'e', name: '长孙', gender: 'm' }] },
+        { id: 'c', name: '次房', gender: 'm' }
+      ]
+    }
+    const { tiles } = sliceTree(fam, {
+      maxTileWidth: 1e6,
+      maxDepthPerTile: 8,
+      maxNodesPerTile: 3
+    })
+    expect(tiles.length).toBe(2)
+    const [first, second] = tiles
+    // 长房整支（长房 + 长孙）不被拆散，先成一幅；次房另起一幅
+    expect(first.nodes.map(n => n.name)).toEqual(['始祖', '长房', '长孙'])
+    expect(second.nodes.map(n => n.name)).toEqual(['次房'])
+    // 横向镜像：长房居右（筒子页右起读，先见长房）
+    expect(first.nodes.find(n => n.id === 'b')!.x).toBeGreaterThan(
+      second.nodes.find(n => n.id === 'c')!.x
+    )
+    // 同代带；次幅自二世起，据此下移对齐——同世节点在两幅中的世界 y 一致
+    expect(second.bandStart).toBe(first.bandStart)
+    expect(second.topDepth).toBe(first.topDepth + 1)
+    expect(second.topY).toBeGreaterThan(first.topY)
+    expect(second.nodes.find(n => n.id === 'c')!.y).toBe(
+      first.nodes.find(n => n.id === 'b')!.y
+    )
+  })
+
+  it('默认不设世代数上限：版面容得下时整树排成一幅', () => {
+    const fam: FamilyNode = {
+      id: 'g0',
+      name: '始祖',
+      gender: 'm',
+      children: [
+        {
+          id: 'b1', name: '二世长', gender: 'm',
+          children: [
+            {
+              id: 'c1', name: '三世长', gender: 'm',
+              children: [
+                {
+                  id: 'd1', name: '四世长', gender: 'm',
+                  children: [{ id: 'e1', name: '五世长', gender: 'm', children: [{ id: 'f1', name: '六世', gender: 'm' }] }]
+                },
+                { id: 'd2', name: '四世次', gender: 'm' }
+              ]
+            },
+            { id: 'c2', name: '三世次', gender: 'm' }
+          ]
+        },
+        { id: 'b2', name: '二世次', gender: 'm' }
+      ]
+    }
+    const { tiles } = sliceTree(fam, { maxTileWidth: 1e6 })
+    // 不再按「每幅最多 4 世」截断：6 个世代一次排完
+    expect(tiles.length).toBe(1)
+    expect(Math.max(...tiles[0].nodes.map(n => n.depth))).toBe(5)
+    expect(tiles[0].nodes.length).toBe(9)
+  })
+
+  it('按横向容量自动收代：整代排不下即顺延，单代仍过宽才按长幼横切', () => {
+    // 1 → 2 → 4 → 8 的规整树（共 15 人、4 个世代）
+    const fam: FamilyNode = {
+      id: 'a', name: '始祖', gender: 'm',
+      children: [0, 1].map(i => ({
+        id: `b${i}`, name: `二世${i}`, gender: 'm' as const,
+        children: [0, 1].map(j => ({
+          id: `c${i}${j}`, name: `三世${i}${j}`, gender: 'm' as const,
+          children: [0, 1].map(k => ({ id: `d${i}${j}${k}`, name: `四世${i}${j}${k}`, gender: 'm' as const }))
+        }))
+      }))
+    }
+    // 单元宽约 19、间距 26：4 人一行净宽 154 可容，8 人一行 334 必超
+    const { tiles } = sliceTree(fam, { maxTileWidth: 160 })
+    expect(tiles.length).toBe(3)
+    // 首幅：前三世一次排完（第 4 世整行超宽，整体顺延，不拆进本幅）
+    expect(Math.max(...tiles[0].nodes.map(n => n.depth))).toBe(2)
+    expect(tiles[0].nodes.length).toBe(7)
+    // 第 3、4 世合为两代带仍超版宽：保留父行骑缝，再按长幼整支横切两幅
+    expect(tiles[1].bandStart).toBe(2)
+    expect(tiles[1].nodes.map(n => n.id).sort()).toEqual(['c00', 'c01', 'd000', 'd001', 'd010', 'd011'])
+    expect(tiles[1].overlapIds.sort()).toEqual(['c00', 'c01'])
+    expect(tiles[2].nodes.map(n => n.id).sort()).toEqual(['c10', 'c11', 'd100', 'd101', 'd110', 'd111'])
+    expect(tiles[2].overlapIds.sort()).toEqual(['c10', 'c11'])
+    // 除骑缝父行外无重复，全部 15 人均无遗漏
+    const ids = tiles.flatMap(t => t.nodes.filter(n => !t.overlapIds.includes(n.id)).map(n => n.id))
+    expect(ids.length).toBe(15)
+    expect(new Set(ids).size).toBe(15)
+  })
+
+  it('第五世续幅仅保留有后代的维城分支，无后代叶子留在上一幅', () => {
+    const leaf = (id: string, name: string): FamilyNode => ({ id, name, gender: 'm' })
+    const fam: FamilyNode = {
+      id: 'a', name: '始祖', gender: 'm',
+      children: [{
+        id: 'b', name: '二世', gender: 'm',
+        children: [{
+          id: 'c', name: '三世', gender: 'm',
+          children: [{
+            id: 'd', name: '四世', gender: 'm',
+            children: [
+              {
+                id: 'e-city', name: '维城', gender: 'm',
+                children: [leaf('f-zong', '承宗'), leaf('f-ye', '承业')]
+              },
+              leaf('e-yuan', '维垣'),
+              leaf('e-ning', '维宁'),
+              leaf('e-yuan2', '维远'),
+              leaf('e-qing', '维清'),
+              leaf('e-lian', '维濂'),
+              leaf('e-luo', '维洛')
+            ]
+          }]
+        }]
+      }]
+    }
+    const { tiles } = sliceTree(fam, { maxDepthPerTile: 5, maxTileWidth: 1e6 })
+    expect(tiles.length).toBe(2)
+    expect(tiles[0].nodes.filter(n => n.depth === 4).length).toBe(7)
+    expect(tiles[1].nodes.map(n => n.id).sort()).toEqual(['e-city', 'f-ye', 'f-zong'])
+    expect(tiles[1].overlapIds).toEqual(['e-city'])
+    // 非骑缝人物跨幅只出现一次，六个无后代第五世不会复制到续幅
+    const ids = tiles.flatMap(t => t.nodes.filter(n => !t.overlapIds.includes(n.id)).map(n => n.id))
+    expect(ids.length).toBe(13)
+    expect(new Set(ids).size).toBe(13)
+  })
+
+  it('本幅所有世代均生成标签，包括无叶子的中间世，标签纳入纵向取景', () => {
+    const fam: FamilyNode = {
+      id: 'r', name: '始祖', gender: 'm',
+      children: [{
+        id: 'b', name: '二世', gender: 'm',
+        children: [
+          { id: 'c', name: '三世长', gender: 'm', spouse: ['王秀英'] },
+          { id: 'd', name: '三世次', gender: 'm' }
+        ]
+      }]
+    }
+    const { tiles } = sliceTree(fam, { maxDepthPerTile: 2, maxTileWidth: 1e6 })
+    expect(tiles.length).toBe(2)
+    const labeledDepths = new Set<number>()
+    for (const t of tiles) {
+      for (const n of t.nodes) {
+        const label = treeGenerationLabel(n)
+        labeledDepths.add(n.depth)
+        expect(label.text).toBe(`第${toChineseNum(n.depth + 1)}世`)
+        expect(t.bounds.minY).toBeLessThanOrEqual(n.y - label.height / 2)
+        expect(t.bounds.maxY).toBeGreaterThanOrEqual(n.y + label.height / 2)
+      }
+    }
+    expect([...labeledDepths].sort((a, b) => a - b)).toEqual([0, 1, 2])
+  })
+
+  it('横切后不保留只有骑缝父行的重复空续幅', () => {
+    const fam: FamilyNode = {
+      id: 'a', name: '始祖', gender: 'm',
+      children: [{
+        id: 'b', name: '二世', gender: 'm',
+        children: [0, 1, 2, 3, 4].map(i => ({
+          id: `c${i}`, name: `三世${i}`, gender: 'm' as const,
+          children: i === 0 ? [{ id: 'd0', name: '四世', gender: 'm' as const }] : []
+        }))
+      }]
+    }
+    const { tiles } = sliceTree(fam, { maxTileWidth: 140, gapX: 40 })
+    expect(tiles.length).toBeGreaterThan(1)
+    for (const t of tiles) {
+      expect(t.nodes.some(n => !t.overlapIds.includes(n.id))).toBe(true)
+    }
+    const ids = tiles.flatMap(t => t.nodes.filter(n => !t.overlapIds.includes(n.id)).map(n => n.id))
+    expect(ids.length).toBe(8)
+    expect(new Set(ids).size).toBe(8)
+  })
+
+  it('不同世代规模、节点数量与版宽下均完整覆盖且不超幅宽', () => {
+    for (const [depth, breadth] of [[7, 1], [4, 2], [3, 4]] as const) {
+      for (const width of [160, 320, 1000]) {
+        let total = 0
+        const build = (level: number, path: string): FamilyNode => {
+          total++
+          return {
+            id: path,
+            name: `世${level}人${path}`,
+            gender: 'm',
+            children: level + 1 < depth
+              ? Array.from({ length: breadth }, (_, i) => build(level + 1, `${path}-${i}`))
+              : []
+          }
+        }
+        const fam = build(0, 'r')
+        const { tiles } = sliceTree(fam, { maxTileWidth: width })
+        const ids = tiles.flatMap(t => t.nodes.filter(n => !t.overlapIds.includes(n.id)).map(n => n.id))
+        expect(ids.length, `${depth} 代 / ${total} 人 / 版宽 ${width}`).toBe(total)
+        expect(new Set(ids).size).toBe(total)
+        for (const t of tiles) {
+          expect(t.nodes.some(n => !t.overlapIds.includes(n.id))).toBe(true)
+          // 默认 padding=40，包围盒净内容宽不得超过自动分幅所用的同一版宽
+          expect(t.bounds.maxX - t.bounds.minX - 80).toBeLessThanOrEqual(width + 1e-6)
+        }
+      }
+    }
+  })
+
+  it('幅内横向按图谱规则重排：同辈兄弟净距一致、父节点居中于子群中点', () => {
+    const fam: FamilyNode = {
+      id: 'r', name: '始祖', gender: 'm',
+      children: [
+        { id: 'c1', name: '长男', gender: 'm' },
+        { id: 'c2', name: '次男', gender: 'm' },
+        { id: 'c3', name: '三男', gender: 'm' },
+        { id: 'c4', name: '四男', gender: 'm' }
+      ]
+    }
+    const { tiles } = sliceTree(fam, { maxTileWidth: 1e6 })
+    expect(tiles.length).toBe(1)
+    const kids = tiles[0].nodes.filter(n => n.depth === 1).sort((a, b) => a.x - b.x)
+    expect(kids.length).toBe(4)
+    const gaps = kids.slice(1).map((n, i) => n.x - kids[i].x)
+    // 同辈卡片宽一致、无额外后代撑宽，相邻中心距应完全相等
+    for (const g of gaps) expect(g).toBeCloseTo(gaps[0], 6)
+    // 父节点居中于首末子之间
+    const root = tiles[0].nodes.find(n => n.depth === 0)!
+    expect(root.x).toBeCloseTo((kids[0].x + kids[kids.length - 1].x) / 2, 6)
+  })
+
+  it('配偶与姓名算作一个排版单元：同辈单元边缘净距恒为 gapX', () => {
+    const fam: FamilyNode = {
+      id: 'r', name: '始祖', gender: 'm',
+      children: [
+        { id: 'c1', name: '长男', gender: 'm', spouse: ['甲氏'] },
+        { id: 'c2', name: '次男', gender: 'm' },
+        { id: 'c3', name: '三男', gender: 'm', spouse: ['乙氏', '丙氏'] }
+      ]
+    }
+    const gapX = 30
+    const { tiles } = sliceTree(fam, { maxTileWidth: 1e6, gapX })
+    const t = tiles[0]
+    const aux = { showRank: t.showRank, showInherit: t.showInherit, spouseFormat: t.spouseFormat }
+    const boxes = t.nodes
+      .filter(n => n.depth === 1)
+      .sort((a, b) => a.x - b.x)
+      .map(n => {
+        const b = treeNodeBox(n, t.mainSize, t.auxSize, aux)
+        return { l: n.x + b.left, r: n.x + b.right }
+      })
+    expect(boxes.length).toBe(3)
+    // 有无配偶、配偶几列，都不影响「单元到单元」的净距
+    for (let i = 1; i < boxes.length; i++) {
+      expect(boxes[i].l - boxes[i - 1].r).toBeCloseTo(gapX, 6)
+    }
+  })
+
+  it('中缝分栏线落在节点空隙内，不切断任何姓名', () => {
+    const root: FamilyNode = {
+      id: 'r',
+      name: '始祖',
+      gender: 'm',
+      children: Array.from({ length: 8 }, (_, i) => ({
+        id: `k${i}`,
+        name: `子${i}`,
+        gender: 'm' as const
+      }))
+    }
+    const { tiles } = sliceTree(root, { maxDepthPerTile: 8, maxTileWidth: 1e6 })
+    expect(tiles.length).toBe(1)
+    const tile = tiles[0]
+    // 分栏线须在幅内，且不能与任何节点文字横向区间相交
+    expect(tile.splitX).toBeGreaterThan(tile.bounds.minX)
+    expect(tile.splitX).toBeLessThan(tile.bounds.maxX)
+    for (const n of tile.nodes) {
+      // 姓名竖排为单列，横向仅占约一个字宽；取景上下缘须完整包住整列姓名
+      expect(Math.abs(tile.splitX - n.x), n.name).toBeGreaterThan(tile.mainSize / 2)
+      const span = treeNameSpans(n.name, tile.mainSize)
+      expect(tile.bounds.minY, n.name).toBeLessThanOrEqual(n.y + span.top)
+      expect(tile.bounds.maxY, n.name).toBeGreaterThanOrEqual(n.y + span.bottom)
+    }
+    // 始祖完整留在右半叶：右页起读先见始祖
+    const rootNode = tile.nodes.find(n => n.depth === 0)!
+    expect(rootNode.x - tile.mainSize / 2).toBeGreaterThan(tile.splitX)
   })
 })
 
