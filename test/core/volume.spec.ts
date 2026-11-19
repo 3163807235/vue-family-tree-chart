@@ -33,6 +33,12 @@ const tree: FamilyNode = {
 }
 
 const prefaceText = '家之有谱，犹国之有史。'.repeat(100) // 1200 字，超一叶容量（首叶十九列约 874 字），须跨叶续排
+const culturalChapters = [
+  ['surnameOrigin', '姓氏源流'],
+  ['hallOrigin', '堂号起源'],
+  ['familyRules', '家规'],
+  ['familyInstructions', '家训']
+] as const
 
 function buildPlan() {
   return createVolumePlan({
@@ -93,6 +99,27 @@ describe('章节编排', () => {
     expect(plan.chapters.map(c => c.kind)).toEqual(STANDARD_CHAPTER_ORDER)
   })
 
+  it('注册姓氏源流、堂号起源、家规、家训为标准文本章节', () => {
+    const plan = createVolumePlan({ title: '宗谱' })
+    const kinds = plan.chapters.map(c => c.kind)
+    expect(kinds.slice(kinds.indexOf('editorialNotes'), kinds.indexOf('treeDiagram') + 1)).toEqual([
+      'editorialNotes',
+      'surnameOrigin',
+      'hallOrigin',
+      'honor',
+      'genPoem',
+      'familyRules',
+      'familyInstructions',
+      'treeDiagram'
+    ])
+    for (const [kind, title] of culturalChapters) {
+      const chapter = plan.chapters.find(c => c.kind === kind)!
+      expect(chapter.id).toBe(kind)
+      expect(chapter.title).toBe(title)
+      expect(chapter.content.type).toBe('text')
+    }
+  })
+
   it('按 kind 覆盖内容与章名', () => {
     const plan = buildPlan()
     const ch = plan.chapters.find(c => c.kind === 'register')!
@@ -121,6 +148,21 @@ describe('章节编排', () => {
 })
 
 describe('成册装配', () => {
+  it('姓氏源流、堂号起源、家规、家训均生成章名页并纳入总目', () => {
+    const result = assembleVolume(createVolumePlan({ title: '宗谱' }))
+    for (const [kind, title] of culturalChapters) {
+      const pages = result.pages.filter(p => p.chapterKind === kind)
+      expect(pages.length).toBeGreaterThan(0)
+      expect(pages[0].isChapterStart).toBe(true)
+      expect(pages[0].text?.heading?.chars.map(c => c.ch).join('')).toBe(title)
+
+      const tocEntry = result.toc.find(e => e.chapterId === kind && e.level === 0)!
+      expect(tocEntry.title).toBe(title)
+      expect(result.pages[tocEntry.leafIndex]).toBe(pages[0])
+      expect(result.chapterSpans.find(s => s.chapterId === kind)?.startLeaf).toBe(pages[0].leafIndex)
+    }
+  })
+
   it('总目紧接扉页、不编叶码，正文自「一」起', () => {
     const result = assembleVolume(buildPlan())
     expect(result.pages[0].chapterKind).toBe('cover')

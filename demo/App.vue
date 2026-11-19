@@ -156,7 +156,7 @@ function buildBookTree(): FamilyNode {
 }
 const bookData = ref<FamilyNode>(buildBookTree())
 
-// ===== 成册示例：标准章节体系（封面→扉页→序→凡例→总目→恩荣录→字辈谱→世系图→世系录→传记→祠堂→坟茔→族产→艺文→后记） =====
+// ===== 成册示例：标准章节体系（封面→扉页→总目→序→凡例→姓氏源流→堂号起源→恩荣录→字辈谱→家规→家训→世系图→世系录→传记→祠堂→坟茔→族产→艺文→后记） =====
 const volumePlan = computed(() =>
   createVolumePlan({
     title: '测试宗谱',
@@ -210,6 +210,28 @@ const volumePlan = computed(() =>
         }
       },
       {
+        id: 'surnameOrigin',
+        content: {
+          type: 'text',
+          blocks: [
+            { kind: 'heading', text: '姓氏源流' },
+            { kind: 'paragraph', text: '吾族周姓，旧谱称源出姬姓，子孙以国为氏，历世绵远。始祖邦公始迁凤坞，择地而居，耕读传家，是为本支之始。' },
+            { kind: 'paragraph', text: '自邦公而下，长房廷芬、次房廷苏、三房廷福，支派渐分而昭穆有序。今考旧谱所载，辑其得姓、迁徙与世次源流，以告后人。' }
+          ]
+        }
+      },
+      {
+        id: 'hallOrigin',
+        content: {
+          type: 'text',
+          blocks: [
+            { kind: 'heading', text: '堂号起源' },
+            { kind: 'paragraph', text: '汝南为吾族旧望，先人因以名堂，示子孙不忘本源。凡谱牒、祠匾及祭祀文书，皆署「汝南堂」，以别支系、联宗亲。' },
+            { kind: 'paragraph', text: '堂号虽本郡望，亦寓敦亲睦族之意。后世纵迁居异地，仍当谨守堂号，岁时修祀，续谱存证，使源流可考。' }
+          ]
+        }
+      },
+      {
         id: 'honor',
         content: {
           type: 'text',
@@ -225,6 +247,29 @@ const volumePlan = computed(() =>
           type: 'genPoem',
           poem: '邦廷景维承\n世德昭先绪\n诗书启后昆\n忠厚传家远',
           note: '右派语二十字，自十五世起依序命名，毋得紊乱'
+        }
+      },
+      {
+        id: 'familyRules',
+        content: {
+          type: 'text',
+          blocks: [
+            { kind: 'heading', text: '家规' },
+            { kind: 'paragraph', text: '一、孝悌为先。事父母当敬，处兄弟当和，尊卑长幼各守其分，不得恃强凌弱。' },
+            { kind: 'paragraph', text: '二、祠产为公。祭田、义庄及祠宇器物，由族众公举管理人收掌，岁终公布出入，不得私占侵渔。' },
+            { kind: 'paragraph', text: '三、和睦息争。族中若有田产、婚姻等争，先由房长调处；调处不谐，再赴宗祠公议，不得轻启讼端。' }
+          ]
+        }
+      },
+      {
+        id: 'familyInstructions',
+        content: {
+          type: 'text',
+          blocks: [
+            { kind: 'heading', text: '家训' },
+            { kind: 'paragraph', text: '孝亲敬长，友于兄弟；勤俭立身，宽厚待人。晨昏定省不可废，岁时祭享不可忘。' },
+            { kind: 'paragraph', text: '耕以养家为本，读以明理修身；无论士农工商，皆当守诚信、戒奢靡。子弟宜早受教，知礼仪、辨是非，毋坠先人之训。' }
+          ]
         }
       },
       {

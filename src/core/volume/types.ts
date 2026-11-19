@@ -21,8 +21,10 @@ import type {
  * 标准章节语义分类（传统家谱核心模块）
  * - cover 封面 / titlePage 扉页 / toc 总目
  * - preface 序（自序、他序、跋） / editorialNotes 凡例
+ * - surnameOrigin 姓氏源流 / hallOrigin 堂号起源
  * - honor 恩荣录（诰命、敕谕、匾额、科举功名）
  * - genPoem 字辈谱（派语、行第诗）
+ * - familyRules 家规 / familyInstructions 家训
  * - treeDiagram 世系图（宝塔吊线图，总图）
  * - register 世系录（牒记式，逐人条目）
  * - biography 传记（人物小传、行状、墓志）
@@ -38,8 +40,12 @@ export type ChapterKind =
   | 'toc'
   | 'preface'
   | 'editorialNotes'
+  | 'surnameOrigin'
+  | 'hallOrigin'
   | 'honor'
   | 'genPoem'
+  | 'familyRules'
+  | 'familyInstructions'
   | 'treeDiagram'
   | 'register'
   | 'biography'
