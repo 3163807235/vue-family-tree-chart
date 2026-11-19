@@ -26,6 +26,7 @@ export { sliceTree } from './core/volume/treeTiles'
 export type { TreeSliceResult } from './core/volume/treeTiles'
 export {
   computeVolumeGeometry,
+  fitVerticalTitleSize,
   normalizeBinding,
   computeBindingOnSpine,
   paginateVerticalText,

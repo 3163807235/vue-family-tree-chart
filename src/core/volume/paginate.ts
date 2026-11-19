@@ -42,6 +42,24 @@ const CN_UNITS = ['', '十', '百', '千']
 export const r2 = (v: number): number => Math.round(v * 100) / 100
 
 /**
+ * 竖排文字块自适应字号：保证 charCount 个字在给定容器高度内不溢出。
+ * 字心行距 = size × lineRatio，块高 = (charCount-1)×size×lineRatio + size。
+ * 返回 [minSize, maxSize] 内的字号；字符数为 0 或容器无高度时回退 maxSize。
+ * 谱名（版心书名、封面、扉页）统一走此处，避免三处各写一套收缩逻辑。
+ */
+export function fitVerticalTitleSize(
+  availH: number,
+  charCount: number,
+  maxSize: number,
+  lineRatio = 1.15,
+  minSize = 16
+): number {
+  if (charCount <= 0 || availH <= 0 || !Number.isFinite(availH)) return maxSize
+  const denom = (charCount - 1) * lineRatio + 1
+  return Math.max(minSize, Math.min(maxSize, availH / denom))
+}
+
+/**
  * 阿拉伯数字转中文数字（1~9999）
  * 叶码、卷次、世次均用此函数，需支持百叶以上的长篇家谱。
  */
@@ -612,18 +630,21 @@ export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'):
   const g = ctx.geometry
   const PHI = 1.618
 
-  // 谱名尺寸（字号 = 纸高 × 0.085 / 0.072）
-  const titleSize = g.pageHeight * (mode === 'cover' ? 0.085 : 0.072)
-  const titleLineH = titleSize * 1.15
+  // 谱名理想尺寸（字号 = 纸高 × 0.085 / 0.072）；超长谱名会按右半叶容器等比缩小，保证永不越框
+  const idealTitleSize = g.pageHeight * (mode === 'cover' ? 0.085 : 0.072)
   const title = ctx.plan.title || '宗谱'
-  const titleH = Array.from(title).length * titleLineH
+  const titleCharCount = Array.from(title).length
 
   // 横向中轴：右半叶自身中心（版心右界 → 版框右缘 的中点）
   const titleX = (g.spine.right + g.frame.right) / 2
 
-  // ---- 题记字号先算（组合块尺寸依赖它） ----
-  // 字号 titleSize / φ³：比谱名小 φ³=4.24 倍，显著弱化视觉权重
-  const metaSizeIdeal = titleSize / (PHI * PHI * PHI)
+  // 右边内容区 = 版框墨线上下缘之间的可绘空间（frame.top ~ frame.bottom）
+  const contentTop = g.frame.top
+  const contentH = g.frame.bottom - g.frame.top
+
+  // ---- 题记理想字号（超长题记另作横向压缩，见下） ----
+  // 字号 idealTitleSize / φ³：比谱名小 φ³=4.24 倍，显著弱化视觉权重
+  const metaSizeIdeal = idealTitleSize / (PHI * PHI * PHI)
   const metaLinesRaw = [
     [ctx.plan.edition ?? '', ctx.plan.compiler ?? ''].filter(Boolean).join('　'),
     ctx.plan.compileDate ?? ''
@@ -632,7 +653,7 @@ export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'):
   const META_SIDE_PAD = 24
   const halfCenterX = (g.spine.right + g.frame.right) / 2
   const availableRightHalf = g.frame.right - halfCenterX - META_SIDE_PAD
-  const finalMetaSize = (() => {
+  const finalMetaSizeIdeal = (() => {
     if (!metaLinesRaw.length) return metaSizeIdeal
     const longest = Math.max(...metaLinesRaw.map(l => Array.from(l).length))
     const neededHalf = longest * metaSizeIdeal * META_STEP_FACTOR / 2
@@ -640,21 +661,37 @@ export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'):
     return Math.max(metaSizeIdeal * (availableRightHalf / neededHalf), 8)
   })()
 
-  // ---- 整个视觉组合块的纵向排布 ----
-  // 谱名与题记呼吸距 = titleH / φ（谱名高的黄金比倒数，严格 1:0.618 间距）
+  // ---- 先按理想尺寸估算组合块高；超出右半叶内容区则整体等比缩放（谱名/呼吸距/题记同比） ----
+  const idealTitleLineH = idealTitleSize * 1.15
+  const idealTitleH = titleCharCount * idealTitleLineH
+  const idealBreath = idealTitleH / PHI
+  const idealMetaLineGap = finalMetaSizeIdeal * PHI
+  const idealTwoMetaH = finalMetaSizeIdeal + idealMetaLineGap + finalMetaSizeIdeal
+  const idealComboH = idealTitleH + idealBreath + idealTwoMetaH
+  const titleScale = Math.min(1, contentH / idealComboH)
+
+  // 缩放后最终尺寸（titleScale=1 时与原黄金比布局完全一致）
+  const titleSize = idealTitleSize * titleScale
+  const titleLineH = titleSize * 1.15
+  const titleH = titleCharCount * titleLineH
   const breath = titleH / PHI
+
+  // 题记最终字号：在「缩放后谱名比例字号」与「横向不越版框」之间取小者
+  const metaSizeBase = titleSize / (PHI * PHI * PHI)
+  const finalMetaSize = (() => {
+    if (!metaLinesRaw.length) return metaSizeBase
+    const longest = Math.max(...metaLinesRaw.map(l => Array.from(l).length))
+    const neededHalf = longest * metaSizeBase * META_STEP_FACTOR / 2
+    if (neededHalf <= availableRightHalf) return metaSizeBase
+    return Math.max(metaSizeBase * (availableRightHalf / neededHalf), 8)
+  })()
   const metaLineGap = finalMetaSize * PHI
   const twoMetaH = finalMetaSize + metaLineGap + finalMetaSize
   const comboH = titleH + breath + twoMetaH
 
-  // 右边内容区 = 版框墨线上下缘之间的可绘空间（frame.top ~ frame.bottom）
-  const contentTop = g.frame.top
-  const contentH = g.frame.bottom - g.frame.top
-
-  // 可用留白 = 内容区高 − 组合块高；若组合块比内容区还高，挤压呼吸距保底
+  // 可用留白 = 内容区高 − 组合块高；缩放后 comboH ≤ contentH，呼吸距与留白按黄金比分配
   const availablePad = Math.max(0, contentH - comboH)
   const topPad = availablePad * (PHI - 1)   // 0.382 分配给上方（谱名顶到内容区顶的空白）
-  const bottomPad = availablePad - topPad   // 0.618 分配给下方（题记底到内容区底的空白）
 
   // 组合块顶 = 内容区顶 + 黄金比上留白 → 谱名从此起排
   const titleTop = contentTop + topPad

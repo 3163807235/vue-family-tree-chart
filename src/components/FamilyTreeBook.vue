@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
 import { runBookLayout } from '../core/bookLayout'
+import { fitVerticalTitleSize } from '../core/volume/paginate'
 import type { FamilyNode, BookLayoutOptions, BookPage, NameFormatter } from '../core/types'
 
 interface Props {
@@ -66,9 +67,21 @@ const RUNNING_TITLE_FONT = "'Source Han Serif CN','思源宋体 CN','Noto Serif 
 
 // 书名（版心竖排大字）专用：思源宋体 SemiBold 600、二号（22pt≈29.33px）；字行距 1.15 与全书紧排一致
 const TITLE_FONT = "'Source Han Serif CN','思源宋体 CN','Noto Serif SC','SimSun',serif"
-const titleFontSize = 45
-const titleLineH = titleFontSize * 1.15
 const titleChars = computed(() => (props.title ? props.title.split('') : []))
+
+/**
+ * 版心书名字号：默认 45px；字数多时按「内栏顶（frame.top+5）～上鱼尾顶缘」容器自适应缩小，
+ * 保证书名永不撞鱼尾、不越版框。最小 18px（仍清晰可辨）。
+ */
+const titleFontSize = computed(() => {
+  const page = book.value.pages[0]
+  const n = titleChars.value.length
+  if (!page || n === 0) return 45
+  const tailHalfH = (page.spine.width * 0.6876) / 2
+  const avail = (page.spine.upperTailY - tailHalfH) - (page.frame.top + 5)
+  return fitVerticalTitleSize(avail, n, 45, 1.15, 18)
+})
+const titleLineH = computed(() => titleFontSize.value * 1.15)
 
 /**
  * 书名第 i 字的字心 y：整块在「内栏顶（frame.top+5）～上鱼尾顶缘」容器内上下居中。
@@ -80,7 +93,8 @@ const titleCharY = (page: BookPage, i: number) => {
   const containerTop = page.frame.top + 5
   const containerBottom = page.spine.upperTailY - tailHalfH
   const blockCenterY = (containerTop + containerBottom) / 2
-  return blockCenterY - ((n - 1) * titleLineH) / 2 + i * titleLineH
+  const lh = titleLineH.value
+  return blockCenterY - ((n - 1) * lh) / 2 + i * lh
 }
 
 const options = computed<BookLayoutOptions>(() => ({

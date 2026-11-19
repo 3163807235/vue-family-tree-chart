@@ -12,7 +12,7 @@ import {
   removeChapter,
   setChapterEnabled
 } from '../../src/core/volume/registry'
-import { normalizeBinding, computeBindingOnSpine, toChineseNum, computeVolumeGeometry, tocLeafCount } from '../../src/core/volume/paginate'
+import { normalizeBinding, computeBindingOnSpine, toChineseNum, computeVolumeGeometry, tocLeafCount, fitVerticalTitleSize } from '../../src/core/volume/paginate'
 import { sliceTree, treeGenerationLabel, treeNameSpans, treeNodeBox } from '../../src/core/volume/treeTiles'
 
 const tree: FamilyNode = {
@@ -78,6 +78,18 @@ function buildPlan() {
     ]
   })
 }
+
+describe('fitVerticalTitleSize 竖排书名字号自适应', () => {
+  it('短名用满最大字号，长名按容器等比缩小且不低于最小字号', () => {
+    // 与默认版心一致的容器高 ≈ 222px、最大 45px、行距 1.15
+    expect(fitVerticalTitleSize(222, 4, 45, 1.15, 18)).toBeCloseTo(45, 5) // 4 字用满
+    const fs5 = fitVerticalTitleSize(222, 5, 45, 1.15, 18)
+    expect(fs5).toBeLessThan(45)
+    expect((5 - 1) * fs5 * 1.15 + fs5).toBeLessThanOrEqual(222 + 0.01) // 不溢出
+    expect(fitVerticalTitleSize(222, 30, 45, 1.15, 18)).toBe(18) // 极端长名夹紧到最小
+    expect(fitVerticalTitleSize(0, 5, 45)).toBe(45) // 无容器回退最大
+  })
+})
 
 describe('中文数字', () => {
   it('支持到千位，满足长篇家谱叶码', () => {
@@ -185,6 +197,31 @@ describe('成册装配', () => {
     // 叶序仍照常递增（供跳转定位）
     expect(result.pages.map(p => p.leafIndex)).toEqual(result.pages.map((_, i) => i))
     expect(result.totalLeaves).toBe(result.pages.length)
+  })
+
+  it('谱名超长时封面/扉页字号自适应缩小，谱名字脚不越出版框', () => {
+    const longTitle = '中华汝南堂周氏族谱己亥三修' // 14 字
+    const plan = buildPlan()
+    plan.title = longTitle
+    const result = assembleVolume(plan)
+    for (const kind of ['cover', 'titlePage'] as const) {
+      const p = result.pages.find(page => page.chapterKind === kind)!
+      const chars = p.cover!.titleChars
+      const size = p.cover!.titleSize
+      expect(chars.length).toBe(longTitle.length)
+      // 14 字理想尺寸必溢出 → 必须被缩小
+      expect(size).toBeLessThan(p.pageHeight * (p.cover!.mode === 'cover' ? 0.085 : 0.072))
+      const firstTop = chars[0].y - size / 2
+      const lastBottom = chars[chars.length - 1].y + size / 2
+      expect(firstTop).toBeGreaterThanOrEqual(p.frame.top - 0.5)
+      expect(lastBottom).toBeLessThanOrEqual(p.frame.bottom + 0.5)
+    }
+  })
+
+  it('短谱名保持原理想字号（自适应 scale=1 不改变既有布局）', () => {
+    const result = assembleVolume(buildPlan()) // 「测试宗谱」4 字
+    const cover = result.pages.find(p => p.chapterKind === 'cover')!
+    expect(cover.cover!.titleSize).toBeCloseTo(cover.pageHeight * 0.085, 5)
   })
 
   it('总目条目指向的叶序与叶码确实落在该章首叶（两遍法页码精确）', () => {

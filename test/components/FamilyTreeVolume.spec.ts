@@ -327,6 +327,22 @@ describe('FamilyTreeVolume', () => {
     expect(() => getPageSvg(result.pages.length)).toThrow(RangeError)
   })
 
+  it('谱名超长时版心书名居中自适应缩小，字心不越出「内栏顶～上鱼尾」容器', () => {
+    const longPlan = createVolumePlan({ ...plan, title: '中华汝南堂周氏族谱己亥三修' })
+    const w = mount(FamilyTreeVolume, { props: { plan: longPlan } })
+    const { result } = exposed(w)
+    const page = result.pages.find(p => p.register) ?? result.pages.find(p => p.chapterKind !== 'cover' && p.chapterKind !== 'titlePage')!
+    const tailHalfH = (page.spine.width * 0.6876) / 2
+    const containerTop = page.frame.top + 10
+    const containerBottom = page.spine.upperTailY - tailHalfH
+    const ys = w.findAll('.ftc-volume-spine text tspan').map(t => Number(t.attributes('y')))
+    expect(ys.length).toBeGreaterThan(0)
+    for (const y of ys) {
+      expect(y).toBeGreaterThanOrEqual(containerTop - 1)
+      expect(y).toBeLessThanOrEqual(containerBottom + 1)
+    }
+  })
+
   it('暴露章节与人物定位 API', () => {
     const w = mount(FamilyTreeVolume, { props: { plan } })
     const { e, result } = exposed(w)
