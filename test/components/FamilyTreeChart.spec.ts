@@ -76,6 +76,14 @@ describe('FamilyTreeChart', () => {
     expect(svg.findAll('g[data-id]').length).toBe(4)
   })
 
+  it('nameFormatter 在主线程生成显示树，渲染脱敏名且不改原数据', async () => {
+    const data = mkData()
+    const w = mountChart({ data, nameFormatter: (node: FamilyNode) => node.id === 'root' ? '脱敏始祖' : node.name })
+    await settle(w)
+    expect(w.find('g[data-id="root"]').text()).toContain('脱敏始祖')
+    expect(data.name).toBe('始祖')
+  })
+
   it('点击节点主体仅派发 nodeClick，不触发折叠/展开', async () => {
     const onNode = vi.fn()
     const onUpdate = vi.fn()

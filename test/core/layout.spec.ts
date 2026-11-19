@@ -152,6 +152,16 @@ describe('runLayout', () => {
     expect(e.ymin).toBeGreaterThan(parent.y + 24)
   })
 
+  it('nameFormatter 只替换显示名并参与布局测量，不修改原树', () => {
+    const root = mk('1', '原', 'm', [mk('2', '子', 'm')])
+    const plain = runLayout(root, 100, 96, [])
+    const formatted = runLayout(root, 100, 96, [], 12, 10, node => node.id === '1' ? '脱敏始祖' : '脱敏子女')
+    expect(formatted.nodes.map(n => n.name)).toEqual(['脱敏始祖', '脱敏子女'])
+    expect(formatted.height).toBeGreaterThan(plain.height)
+    expect(root.name).toBe('原')
+    expect(root.children![0].name).toBe('子')
+  })
+
   it('主字号增大使长名字吊线起点更低', () => {
     const name = '一二三四五六七八九一'
     const mkParent = () => mk('1', name, 'm', [mk('2', 'B', 'm')])

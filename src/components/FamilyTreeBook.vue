@@ -1,11 +1,13 @@
 <!-- 谱牒式（牒记式）谱书渲染组件：按古籍筒子页版刻版式渲染 SVG 页面（A3 横向，版心对折为左右半叶） -->
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, shallowRef } from 'vue'
 import { runBookLayout } from '../core/bookLayout'
-import type { FamilyNode, BookLayoutOptions, BookPage } from '../core/types'
+import type { FamilyNode, BookLayoutOptions, BookPage, NameFormatter } from '../core/types'
 
 interface Props {
   data: FamilyNode
+  /** 姓名展示变换钩子；显示名参与排版，不修改原始数据 */
+  nameFormatter?: NameFormatter
   pageWidth?: number
   pageHeight?: number
   /** 左右边距（版框距纸边） */
@@ -88,6 +90,7 @@ const options = computed<BookLayoutOptions>(() => ({
   topMargin: props.topMargin,
   bottomMargin: props.bottomMargin,
   nameSize: props.nameSize,
+  nameFormatter: props.nameFormatter,
   bioSize: props.bioSize,
   bioLineSpacing: props.bioLineSpacing,
   gridColWidth: props.gridColWidth,
@@ -100,6 +103,19 @@ const fillOf = (c: { punct?: boolean }): string | undefined =>
   c.punct && props.punctColor ? props.punctColor : undefined
 
 const book = computed(() => runBookLayout(props.data, options.value))
+
+const pageSvgs = shallowRef<SVGSVGElement[]>([])
+
+/** 导出指定页（自 0 起）的独立 SVG 标记；调用方可自行交给 PDF 引擎或持久化。 */
+function getPageSvg(index: number): string {
+  const svg = pageSvgs.value[index]
+  if (!svg) throw new RangeError(`页索引 ${index} 无效，当前共 ${pageSvgs.value.length} 页`)
+  const clone = svg.cloneNode(true) as SVGSVGElement
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  return new XMLSerializer().serializeToString(clone)
+}
+
+defineExpose({ getPageSvg })
 
 // 半叶等分格宽（须与 bookLayout 引擎一致）：自版框外缘至版心均分十格，
 // 最右一格即书眉格（书眉竖排其中），人物格与之同宽
@@ -142,6 +158,7 @@ const genBadgeH = computed(() =>
       :style="{ width: page.width + 'px', height: page.height + 'px' }"
     >
       <svg
+        ref="pageSvgs"
         :width="page.width"
         :height="page.height"
         :viewBox="`0 0 ${page.width} ${page.height}`"

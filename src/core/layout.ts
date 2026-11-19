@@ -1,5 +1,6 @@
 // 家谱宝塔吊线布局纯函数（无 DOM、无框架依赖，可在 Worker/主线程通用）
-import type { FamilyNode, LayoutNode, LayoutEdge, LayoutResult } from './types'
+import type { FamilyNode, LayoutNode, LayoutEdge, LayoutResult, NameFormatter } from './types'
+import { formatFamilyNames } from './validate'
 
 /** 卡半宽（与渲染端一致） */
 const HW = 16
@@ -70,9 +71,11 @@ export function runLayout(
   gapY: number,
   collapsedArr: string[],
   mainSize = 12,
-  auxSize = 10
+  auxSize = 10,
+  nameFormatter?: NameFormatter
 ): LayoutResult {
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0
+  root = formatFamilyNames(root, nameFormatter)
 
   const collapsed: Record<string, boolean> = {}
   for (let i = 0; i < collapsedArr.length; i++) collapsed[collapsedArr[i]] = true

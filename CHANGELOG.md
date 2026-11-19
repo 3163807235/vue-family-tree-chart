@@ -2,6 +2,13 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。所有值得记录的行为变化均列于此。
 
+## [Unreleased]
+
+### 新增
+
+- **统一姓名展示变换钩子**：`FamilyTreeChart` / `FamilyTreeBook` / `FamilyTreeVolume` 新增 `nameFormatter`，`runLayout`、`runBookLayout` 与 `assembleVolume` 同步支持。钩子只生成显示副本，不修改原始树或成册计划；显示名参与布局测量与分页，并贯通父名、子女名录、世系图、世系录、传记小节题及人物索引。Chart 在主线程完成变换后再向 Worker 发送纯数据。
+- **谱书与成册按页 SVG 导出**：`FamilyTreeBook` 与 `FamilyTreeVolume` 新增命令式 `getPageSvg(index)`，分别按 `pageIndex` / `leafIndex` 返回对应页的 SVG 标记，越界抛出 `RangeError`。库只提供页结构/SVG，PDF 文件生成、下载、存储、水印与权限门禁仍由接入方负责。
+
 ## [1.6.1] - 2026-11-19
 
 ### 变更

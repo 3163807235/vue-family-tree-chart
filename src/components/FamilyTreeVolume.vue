@@ -1,18 +1,20 @@
 <script setup lang="ts">
 // 成册渲染组件：按 VolumeResult 逐叶绘制（封面、扉页、总目、竖排文本、图版、世系图、世系录）
 // 版框、乌丝栏、版心鱼尾、书眉、叶码均自立绘制，与 FamilyTreeBook 同一版刻行款。
-import { computed } from 'vue'
+import { computed, shallowRef } from 'vue'
 import { assembleVolume } from '../core/volume/assemble'
 import { treeGenerationLabel, treeNameSpans, treeNodeExtras } from '../core/volume/treeTiles'
 import type { CustomRenderer, VolumePage, VolumePlan } from '../core/volume/types'
 import type { TreeTile } from '../core/volume/types'
-import type { BookPage } from '../core/types'
+import type { BookPage, NameFormatter } from '../core/types'
 
 const props = defineProps<{
   /** 成册计划（createVolumePlan 产出，可用 insertChapter 等 API 编排） */
   plan: VolumePlan
   /** 自定义章节渲染器，键为章节 id 或 kind */
   customRenderers?: Record<string, CustomRenderer>
+  /** 姓名展示变换钩子；统一应用于世系图、世系录、传记标题与人物索引 */
+  nameFormatter?: NameFormatter
 }>()
 
 const emit = defineEmits<{
@@ -20,7 +22,10 @@ const emit = defineEmits<{
   (e: 'page-click', payload: { leafIndex: number }): void
 }>()
 
-const result = computed(() => assembleVolume(props.plan, { customRenderers: props.customRenderers }))
+const result = computed(() => assembleVolume(props.plan, {
+  customRenderers: props.customRenderers,
+  nameFormatter: props.nameFormatter
+}))
 
 /** 正文字体只作用于正文与署名，章节标题继续使用标题字体/系统默认 */
 const bodyFontFamily = computed(() => props.plan.fonts?.bodyFontFamily || undefined)
@@ -260,7 +265,18 @@ function leafOfPerson(personId: string, target: 'register' | 'bio' | 'tree' = 'r
   return result.value.pages.findIndex(p => p.leafNumber === leafNumber)
 }
 
-defineExpose({ result, leafOfChapter, leafOfPerson })
+const pageSvgs = shallowRef<SVGSVGElement[]>([])
+
+/** 导出指定叶（leafIndex，自 0 起）的独立 SVG 标记；不包含 PDF、下载或权限逻辑。 */
+function getPageSvg(index: number): string {
+  const svg = pageSvgs.value[index]
+  if (!svg) throw new RangeError(`叶索引 ${index} 无效，当前共 ${pageSvgs.value.length} 叶`)
+  const clone = svg.cloneNode(true) as SVGSVGElement
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  return new XMLSerializer().serializeToString(clone)
+}
+
+defineExpose({ result, leafOfChapter, leafOfPerson, getPageSvg })
 
 /** 世系录页内栏线过滤（版心两界另绘黑线） */
 function gridLines(page: VolumePage): number[] {
@@ -280,6 +296,7 @@ function gridLines(page: VolumePage): number[] {
       @click="onTocClick(page)"
     >
       <svg
+        ref="pageSvgs"
         :width="pageW(page)"
         :height="pageH(page)"
         :viewBox="`0 0 ${pageW(page)} ${pageH(page)}`"

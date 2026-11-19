@@ -33,6 +33,7 @@ import type {
   BookSpine,
   VerticalChar
 } from './types'
+import { formatFamilyNames } from './validate'
 
 const RANK_LABELS = ['长子', '次子', '三子', '四子', '五子', '六子', '七子', '八子', '九子', '十子']
 const CN_NUMS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
@@ -248,6 +249,7 @@ function centerVerticalChars(
 
 export function runBookLayout(root: FamilyNode, opts: BookLayoutOptions = {}): BookLayoutResult {
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0
+  root = formatFamilyNames(root, opts.nameFormatter)
   // A3 横向（landscape）：古籍筒子页一张纸横放，版心中线对折，左右两个半叶
   const pageWidth = opts.pageWidth ?? 1587
   const pageHeight = opts.pageHeight ?? 1123

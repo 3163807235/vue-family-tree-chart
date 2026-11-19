@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, shallowRef, nextTick } from 'vue'
 import { runLayout } from '../core/layout'
-import { validateFamily, countNodes } from '../core/validate'
+import { validateFamily, countNodes, formatFamilyNames } from '../core/validate'
 import { useVirtualRender } from '../composables/useVirtualRender'
 import { usePanZoom } from '../composables/usePanZoom'
 import GenRuler from './GenRuler.vue'
@@ -16,12 +16,15 @@ import type {
   TextStyle,
   PerfMetrics,
   Direction,
-  SpouseFormat
+  SpouseFormat,
+  NameFormatter
 } from '../core/types'
 
 interface Props {
   /** 家谱根节点数据（必填）。children 顺序即长幼顺序 */
   data: FamilyNode
+  /** 姓名展示变换钩子；在主线程生成显示树后再交给 Worker，不修改原始数据 */
+  nameFormatter?: NameFormatter
   /** 受控：折叠的节点 id 集合（v-model:collapsed） */
   collapsed?: string[]
   /** 受控：视口位置（v-model:view） */
@@ -74,6 +77,9 @@ const props = withDefaults(defineProps<Props>(), {
   hoverHighlight: true,
   spouseFormat: 'full'
 })
+
+// Worker postMessage 不能携带函数，先在主线程生成仅含显示名的树副本
+const displayData = computed(() => formatFamilyNames(props.data, props.nameFormatter))
 
 const emit = defineEmits<{
   'update:collapsed': [ids: string[]]
@@ -298,7 +304,7 @@ watch(
 )
 // 间距/字号变化 → 仅重算布局、保持当前视图；绝不请求自动定位，避免缩放
 watch(
-  [() => props.gapX, () => props.gapY, () => props.mainStyle?.size, () => props.auxStyle?.size],
+  [() => props.gapX, () => props.gapY, () => props.mainStyle?.size, () => props.auxStyle?.size, () => props.nameFormatter],
   () => {
     if (!dataError.value) doLayout()
   },
@@ -310,7 +316,7 @@ function doLayout() {
   const payload = {
     type: 'layout' as const,
     // 深拷贝为纯对象：去除 Vue reactive proxy，否则 Worker postMessage 无法结构化克隆
-    root: JSON.parse(JSON.stringify(props.data)),
+    root: JSON.parse(JSON.stringify(displayData.value)),
     gapX: props.gapX,
     gapY: props.gapY,
     // collapsed 需复制为纯数组（reactive Proxy 数组不可结构化克隆）
@@ -330,7 +336,7 @@ function doLayout() {
 
 function doLayoutFallback() {
   try {
-    const r = runLayout(props.data, props.gapX, props.gapY, props.collapsed, props.mainStyle?.size, props.auxStyle?.size)
+    const r = runLayout(displayData.value, props.gapX, props.gapY, props.collapsed, props.mainStyle?.size, props.auxStyle?.size)
     applyLayout(r)
   } catch (e) {
     dataError.value = e as Error

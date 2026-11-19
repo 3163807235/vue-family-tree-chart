@@ -49,6 +49,7 @@ const collapsed = ref<string[]>([])
 | 名称 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `data` | `FamilyNode` | `-`（必填） | 家谱根节点 |
+| `nameFormatter` | `(node: FamilyNode) => string` | - | 姓名展示变换钩子；显示名参与布局，不修改原始数据 |
 | `collapsed` | `string[]` | `[]` | 受控：折叠节点 id 集合（`v-model:collapsed`） |
 | `view` | `ViewBox` | 内部 | 受控：视口 `{x,y,w,h}`（`v-model:view`） |
 | `gapX` | `number` | `100` | 横向单元间距 |
@@ -132,6 +133,7 @@ const data: FamilyNode = { id: 'root', name: '周邦', gender: 'm', children: []
 | 名称 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `data` | `FamilyNode` | -（必填） | 家谱根节点 |
+| `nameFormatter` | `(node: FamilyNode) => string` | - | 姓名展示变换钩子；统一影响姓名、父名与子女名录，不修改原始数据 |
 | `pageWidth` / `pageHeight` | `number` | `1587` / `1123` | 纸张尺寸（A3 横版，96dpi） |
 | `margin` | `number` | `64` | 版框距左右纸边 |
 | `topMargin` / `bottomMargin` | `number` | `76` / `56` | 天头 / 地脚 |
@@ -175,6 +177,7 @@ const plan = ref(createVolumePlan({
 |------|------|------|
 | `plan` | `VolumePlan` | 成册计划（`createVolumePlan` 产出，可序列化） |
 | `customRenderers` | `Record<string, CustomRenderer>` | 自定义章节渲染器，键为章节 id 或 kind |
+| `nameFormatter` | `(node: FamilyNode) => string` | 姓名展示变换钩子；统一应用于世系图、世系录、传记标题与人物索引 |
 
 事件：`navigate`（`{ leafIndex, chapterId }`，点击总目条目/章节跳转）、`page-click`（`{ leafIndex }`）。
 
@@ -183,6 +186,49 @@ const plan = ref(createVolumePlan({
 **总目版式**：紧随扉页编排（属卷首前置页，占叶序但不编叶码），一叶 40 格（筒子页左右半叶各 20 格），首叶最外两格合为「总目」章名；条目一格一条——标题竖排于格上、叶码竖排齐底、两者间以竖直虚线相连，不画乌丝栏列分隔线。**卷次（「卷一」「卷二」）仅在整谱分册装订时由 `ChapterSpec.ordinal` 显式给出，单册不自动编号、总目不冠卷次。**
 
 成册计划相关 API：`createChapter` / `insertChapter` / `removeChapter` / `moveChapter` / `setChapterEnabled` / `appendPreface`。
+
+## 姓名展示变换与按页 SVG
+
+### `nameFormatter`
+
+三个组件共用 `(node: FamilyNode) => string` 钩子。库据此生成显示副本，**不修改传入的 `FamilyNode` 或 `VolumePlan`**；显示名会参与文字测量与分页，因此变换前后的页数可能不同。Chart 会先在主线程完成变换，再把纯数据交给 Worker。
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { NameFormatter } from 'family-tree-chart'
+
+const nameFormatter: NameFormatter = node => node.id === 'living-person' ? '某' : node.name
+const book = ref()
+const volume = ref()
+</script>
+
+<template>
+  <FamilyTreeChart :data="data" :name-formatter="nameFormatter" />
+  <FamilyTreeBook ref="book" :data="data" :name-formatter="nameFormatter" />
+  <FamilyTreeVolume ref="volume" :plan="plan" :name-formatter="nameFormatter" />
+</template>
+```
+
+Headless 排版同样支持：
+
+```ts
+const bookResult = runBookLayout(data, { nameFormatter })
+const volumeResult = assembleVolume(plan, { nameFormatter })
+```
+
+钩子应为同步纯函数。它只变换 `FamilyNode.name` 及派生显示（父名、子女名录、传记小节题、人物索引），不会改写 `bio`、`spouse` 或自定义正文；是否脱敏等业务规则由接入方决定。
+
+### `getPageSvg(index)`
+
+`FamilyTreeBook` 与 `FamilyTreeVolume` 均暴露 `getPageSvg(index): string`，返回指定页的 SVG 标记。Book 使用从 0 开始的 `pageIndex`，Volume 使用从 0 开始的 `leafIndex`（含封面、扉页、总目）；索引无效时抛出 `RangeError`。
+
+```ts
+const bookSvg = book.value.getPageSvg(0)
+const volumeSvg = volume.value.getPageSvg(0)
+```
+
+导出基于当前已渲染页的克隆，不修改页面 DOM。返回值保留组件 class；接入方灌入 PDF 引擎前可按需注入 `style.css` 或等价内联样式。**库只提供页数据与 SVG，不生成 PDF 文件，也不处理下载、存储、水印、权限或订阅门禁。**
 
 ## 主题（CSS 变量）
 

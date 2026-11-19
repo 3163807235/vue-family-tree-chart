@@ -311,6 +311,22 @@ describe('FamilyTreeVolume', () => {
     expect(loose.tiles).toBeGreaterThan(narrow.tiles)
   })
 
+  it('nameFormatter 透传整册，getPageSvg 导出指定叶并在越界时报错', () => {
+    const w = mount(FamilyTreeVolume, {
+      props: { plan, nameFormatter: (node: FamilyNode) => node.id === 'b' ? '隐' : node.name }
+    })
+    const { e, result } = exposed(w)
+    expect(result.personIndex.find(entry => entry.personId === 'b')?.name).toBe('隐')
+    const getPageSvg = e.getPageSvg as (index: number) => string
+    const registerIndex = result.pages.findIndex(page => page.register)
+    const svg = getPageSvg(registerIndex)
+    expect(svg).toContain('<svg')
+    expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"')
+    expect(svg).toContain('>隐</tspan>')
+    expect(() => getPageSvg(-1)).toThrow(RangeError)
+    expect(() => getPageSvg(result.pages.length)).toThrow(RangeError)
+  })
+
   it('暴露章节与人物定位 API', () => {
     const w = mount(FamilyTreeVolume, { props: { plan } })
     const { e, result } = exposed(w)

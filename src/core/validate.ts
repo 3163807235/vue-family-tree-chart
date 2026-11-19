@@ -1,5 +1,15 @@
 // 家谱数据结构校验（组件 props 变更前调用，失败时 emit error）
-import type { FamilyNode } from './types'
+import type { FamilyNode, NameFormatter } from './types'
+
+/** 生成仅替换显示名的树副本；未提供钩子时将原树原样返回，避免额外遍历与分配。 */
+export function formatFamilyNames(root: FamilyNode, formatter?: NameFormatter): FamilyNode {
+  if (!formatter) return root
+  return {
+    ...root,
+    name: formatter(root),
+    children: root.children?.map(child => formatFamilyNames(child, formatter))
+  }
+}
 
 export function validateFamily(node: unknown, seen: Set<string> = new Set()): void {
   if (!node || typeof node !== 'object') {

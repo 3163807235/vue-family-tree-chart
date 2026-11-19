@@ -12,6 +12,26 @@ const mk = (id: string, name: string, bio: string | null = null, children: Famil
   ({ id, name, gender: 'm', bio, children })
 const bioOf = (n: number) => '甲'.repeat(n)
 
+describe('runBookLayout 姓名展示变换', () => {
+  it('姓名、父名与子女名录统一使用显示名，原树保持不变', () => {
+    const root = mk('a', '周邦', null, [mk('b', '廷芬')])
+    const result = runBookLayout(root, {
+      ...OPTS,
+      nameFormatter: node => node.id === 'a' ? '隐祖' : '隐子'
+    })
+    const people = result.pages.flatMap(page => page.people)
+    const parent = people.find(person => person.id === 'a')!
+    const child = people.find(person => person.id === 'b')!
+    expect(parent.name).toBe('隐祖')
+    expect(child.name).toBe('隐子')
+    expect(child.parentName).toBe('隐祖')
+    expect(child.parentLabel).toBe('隐祖之子')
+    expect(parent.bioChars.map(char => char.ch).join('')).toContain('子一：长隐子。')
+    expect(root.name).toBe('周邦')
+    expect(root.children![0].name).toBe('廷芬')
+  })
+})
+
 describe('runBookLayout 长传占轨（半叶十列网格内合并相邻格轨）', () => {
   it('短传占单轨：width=一格宽，半叶十列界行完整，始祖标签独占首列', () => {
     const r = runBookLayout(mk('a', '周邦', bioOf(10)), OPTS)

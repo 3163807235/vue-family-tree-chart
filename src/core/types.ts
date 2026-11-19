@@ -30,6 +30,12 @@ export interface FamilyNode {
   children?: FamilyNode[]
 }
 
+/**
+ * 姓名展示变换钩子：接收原始节点，返回用于测量与渲染的显示名。
+ * 仅生成显示副本，不修改 FamilyNode 数据；适用于在世脱敏等展示场景。
+ */
+export type NameFormatter = (node: FamilyNode) => string
+
 /** 布局后节点坐标信息（含原数据快照） */
 export interface LayoutNode {
   id: string
@@ -316,6 +322,8 @@ export interface BookLayoutOptions {
   /** 地脚：版框下沿距纸底 */
   bottomMargin?: number
   nameSize?: number
+  /** 姓名展示变换钩子；显示名参与测量、分页、父名与子女名录，不修改原树 */
+  nameFormatter?: NameFormatter
   bioSize?: number
   /** 传文行距倍数（竖排换行时竖行间的左右间距），默认 1.15 */
   bioLineSpacing?: number

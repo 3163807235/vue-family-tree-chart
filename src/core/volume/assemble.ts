@@ -4,8 +4,9 @@
 //   第一遍：按章节顺序预算各章起始叶序/叶码（总目页数由条目数直接算出，不渲染）；
 //   第二遍：流式装配，总目据第一遍得到的真实叶码渲染，随后逐叶编叶码。
 // 前置页（封面、扉页、总目）依「卷首不编叶」之例：叶序照常递增（供跳转定位），但不计叶码。
-import type { BookLayoutOptions, FamilyNode } from '../types'
+import type { BookLayoutOptions, FamilyNode, NameFormatter } from '../types'
 import { runBookLayout } from '../bookLayout'
+import { formatFamilyNames } from '../validate'
 import {
   buildCoverPage,
   computeVolumeGeometry,
@@ -41,6 +42,59 @@ import type {
 export interface AssembleOptions {
   /** 自定义章节渲染器：键为章节 id（优先）或 kind */
   customRenderers?: Record<string, CustomRenderer>
+  /** 姓名展示变换钩子；统一应用于世系图、世系录、传记标题与人物索引 */
+  nameFormatter?: NameFormatter
+}
+
+/** 生成成册显示计划：只替换姓名，原始 plan 与 FamilyNode 均保持不变。 */
+function formatVolumeNames(plan: VolumePlan, formatter?: NameFormatter): VolumePlan {
+  const sourceNodes = new Map<string, FamilyNode>()
+  if (formatter) {
+    for (const chapter of plan.chapters) {
+      const content = chapter.content
+      if (content.type !== 'tree' && content.type !== 'register') continue
+      const stack: FamilyNode[] = [content.root]
+      while (stack.length) {
+        const node = stack.pop()!
+        sourceNodes.set(node.id, node)
+        for (const child of node.children ?? []) stack.push(child)
+      }
+    }
+  }
+
+  const chapters = plan.chapters.map(chapter => {
+    const content = chapter.content
+    if (content.type === 'tree' && formatter) {
+      return { ...chapter, content: { ...content, root: formatFamilyNames(content.root, formatter) } }
+    }
+    if (content.type === 'register') {
+      const activeFormatter = formatter ?? content.options?.nameFormatter
+      if (!activeFormatter) return chapter
+      return {
+        ...chapter,
+        content: {
+          ...content,
+          root: formatFamilyNames(content.root, activeFormatter),
+          // 已在此处完成显示树变换，避免 runBookLayout 再执行一次钩子
+          options: content.options ? { ...content.options, nameFormatter: undefined } : undefined
+        }
+      }
+    }
+    if (content.type === 'bios' && formatter) {
+      return {
+        ...chapter,
+        content: {
+          ...content,
+          essays: content.essays.map(essay => {
+            const source = sourceNodes.get(essay.personId)
+            return source ? { ...essay, name: formatter(source) } : essay
+          })
+        }
+      }
+    }
+    return chapter
+  })
+  return { ...plan, chapters }
 }
 
 const isFront = (ch: ChapterSpec) => ch.content.type === 'cover' || ch.content.type === 'titlePage'
@@ -67,6 +121,10 @@ function walkTree(node: FamilyNode, out: string[], names: Map<string, string>): 
  */
 export function assembleVolume(plan: VolumePlan, opts: AssembleOptions = {}): VolumeResult {
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0
+  const hasRegisterFormatter = plan.chapters.some(
+    chapter => chapter.content.type === 'register' && chapter.content.options?.nameFormatter
+  )
+  if (opts.nameFormatter || hasRegisterFormatter) plan = formatVolumeNames(plan, opts.nameFormatter)
 
   const setup: ResolvedPageSetup = {
     pageWidth: plan.pageSetup?.pageWidth ?? 1587,

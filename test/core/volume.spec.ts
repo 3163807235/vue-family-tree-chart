@@ -254,6 +254,26 @@ describe('成册装配', () => {
     expect(byId.get('c')!.bioLeaf).toBeNull()
   })
 
+  it('nameFormatter 统一世系图、世系录、传记标题与人物索引，不修改计划', () => {
+    const plan = buildPlan()
+    const result = assembleVolume(plan, { nameFormatter: node => `隐${node.id}` })
+    const registerPeople = result.pages.flatMap(page => page.register?.people ?? [])
+    const treeNodes = result.pages.flatMap(page => [page.tree, page.treeLeft]).flatMap(tile => tile?.nodes ?? [])
+    expect(registerPeople.find(person => person.id === 'b')?.name).toBe('隐b')
+    expect(treeNodes.find(node => node.id === 'b')?.name).toBe('隐b')
+    expect(result.personIndex.find(entry => entry.personId === 'b')?.name).toBe('隐b')
+    const bioSubheadings = result.pages
+      .filter(page => page.chapterId === 'biography')
+      .flatMap(page => page.text?.subheadings ?? [])
+      .map(block => block.chars.map(char => char.ch).join(''))
+    expect(bioSubheadings).toContain('隐b')
+    const register = plan.chapters.find(chapter => chapter.content.type === 'register')!
+    const biography = plan.chapters.find(chapter => chapter.content.type === 'bios')!
+    if (register.content.type !== 'register' || biography.content.type !== 'bios') throw new Error('章节类型异常')
+    expect(register.content.root.children![0].name).toBe('廷芬')
+    expect(biography.content.essays[0].name).toBe('廷芬')
+  })
+
   it('世系录复用牒记版式，章首叶保留书眉格', () => {
     const result = assembleVolume(buildPlan())
     const registerPages = result.pages.filter(p => p.chapterId === 'register')

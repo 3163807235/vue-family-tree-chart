@@ -118,6 +118,7 @@ watch(
   }
   .ftc-ruler-row {
     position: absolute;
+    /* 世代标签靠页面右侧与边缘的距离为 8px */
     right: 8px;
     color: var(--ftc-ruler-color, #9C3E28);
     background: var(--ftc-ruler-bg, #FFF2DE);
