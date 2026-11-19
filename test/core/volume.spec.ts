@@ -12,7 +12,7 @@ import {
   removeChapter,
   setChapterEnabled
 } from '../../src/core/volume/registry'
-import { normalizeBinding, computeBindingOnSpine, toChineseNum, computeVolumeGeometry, tocLeafCount, fitVerticalTitleSize } from '../../src/core/volume/paginate'
+import { normalizeBinding, computeBindingOnSpine, toChineseNum, computeVolumeGeometry, tocLeafCount, fitVerticalTitleSize, layoutSpineTitle } from '../../src/core/volume/paginate'
 import { sliceTree, treeGenerationLabel, treeNameSpans, treeNodeBox } from '../../src/core/volume/treeTiles'
 
 const tree: FamilyNode = {
@@ -88,6 +88,48 @@ describe('fitVerticalTitleSize 竖排书名字号自适应', () => {
     expect((5 - 1) * fs5 * 1.15 + fs5).toBeLessThanOrEqual(222 + 0.01) // 不溢出
     expect(fitVerticalTitleSize(222, 30, 45, 1.15, 18)).toBe(18) // 极端长名夹紧到最小
     expect(fitVerticalTitleSize(0, 5, 45)).toBe(45) // 无容器回退最大
+  })
+})
+
+describe('layoutSpineTitle 中缝书名排版（上下拉伸填满 + 左右限幅拉宽留白）', () => {
+  // 容器与默认版心一致：top=86, bottom=303（avail=217），中缝宽 60
+  const CT = 86, CB = 303, SW = 60
+  const opts = { maxSize: 50, maxScaleX: 1.25, horizPad: 6, vertPad: 4 }
+
+  it('短谱名字号取最大，上下拉开填满容器，左右不拉（scaleX=1）', () => {
+    const r = layoutSpineTitle(CT, CB, SW, '测试宗谱', opts) // 4 字
+    expect(r.size).toBe(50)
+    expect(r.scaleX).toBe(1)
+    // 上下拉伸：块高接近容器高（紧排仅 200，拉伸后约 209）
+    expect(r.blockBottom - r.blockTop).toBeGreaterThan(200)
+    expect(r.blockBottom - r.blockTop).toBeLessThanOrEqual(CB - CT + 0.5)
+    expect(r.blockTop).toBeGreaterThanOrEqual(CT - 0.5)
+    expect(r.blockBottom).toBeLessThanOrEqual(CB + 0.5)
+    expect(r.chars).toHaveLength(4)
+  })
+
+  it('中等长度谱名横向拉宽（scaleX>1）但不超过上限，左右仍留白', () => {
+    const r = layoutSpineTitle(CT, CB, SW, '测试但是五宗谱', opts) // 7 字
+    expect(r.size).toBeCloseTo(217 / 7, 3) // 紧排字号
+    expect(r.scaleX).toBeGreaterThan(1)
+    expect(r.scaleX).toBeLessThanOrEqual(1.25)
+    const drawnWidth = r.size * r.scaleX
+    expect((SW - drawnWidth) / 2).toBeGreaterThanOrEqual(6 - 0.5) // 每侧留白 ≥ horizPad
+  })
+
+  it('超长谱名不再因字号下限卡死而溢出（回归）', () => {
+    const r = layoutSpineTitle(CT, CB, SW, '中华汝南堂周氏族谱己亥三修', opts) // 13 字
+    expect(r.chars).toHaveLength(13)
+    const blockH = r.blockBottom - r.blockTop
+    expect(blockH).toBeLessThanOrEqual(CB - CT + 0.5) // 不越容器
+    expect(r.blockTop).toBeGreaterThanOrEqual(CT - 0.5)
+    expect(r.blockBottom).toBeLessThanOrEqual(CB + 0.5)
+  })
+
+  it('空谱名返回空字符序列且 scaleX 回退 1', () => {
+    const r = layoutSpineTitle(CT, CB, SW, '', opts)
+    expect(r.chars).toEqual([])
+    expect(r.scaleX).toBe(1)
   })
 })
 

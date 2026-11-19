@@ -59,6 +59,91 @@ export function fitVerticalTitleSize(
   return Math.max(minSize, Math.min(maxSize, availH / denom))
 }
 
+/** 中缝书名单字排版结果 */
+export interface SpineTitleChar {
+  ch: string
+  /** 字心 y（页坐标） */
+  y: number
+}
+
+/** 中缝书名整体排版结果 */
+export interface SpineTitleLayout {
+  chars: SpineTitleChar[]
+  /** 正文字号（px，未含横向拉伸） */
+  size: number
+  /** 字心行距（px） */
+  lh: number
+  /** 横向拉伸倍数（≥1，展示层用 scaleX 实现，不改字号） */
+  scaleX: number
+  /** 整块顶 y（首字字顶） */
+  blockTop: number
+  /** 整块底 y（末字字底） */
+  blockBottom: number
+}
+
+/**
+ * 中缝（版心）竖排书名排版，供 Volume 成册页与 Book 世系录页共用（单一决策点）：
+ *  1. 字号按「紧排不溢出」取最大（受 maxSize 限制）；超长时硬下限让位，保证永不越框；
+ *  2. 上下拉伸：有富余则拉开行距填满容器（上下各留 vertPad），行距不超过 size·maxLineRatio 防过疏；
+ *  3. 左右拉伸：字宽向 spineWidth−2·horizPad 拉宽，但不超过 maxScaleX，保留左右留白；
+ *  4. 始终单列、居中。
+ */
+export function layoutSpineTitle(
+  containerTop: number,
+  containerBottom: number,
+  spineWidth: number,
+  title: string,
+  opts: {
+    maxSize: number
+    minSize?: number
+    maxScaleX?: number
+    horizPad?: number
+    vertPad?: number
+    maxLineRatio?: number
+  }
+): SpineTitleLayout {
+  const empty: SpineTitleLayout = { chars: [], size: opts.maxSize, lh: opts.maxSize, scaleX: 1, blockTop: 0, blockBottom: 0 }
+  const chars = Array.from(title || '')
+  const n = chars.length
+  const availH = containerBottom - containerTop
+  if (n === 0 || !(availH > 0) || !Number.isFinite(availH)) return empty
+
+  const maxScaleX = opts.maxScaleX ?? 1.25
+  const horizPad = opts.horizPad ?? 6
+  const vertPad = opts.vertPad ?? 4
+  const maxLineRatio = opts.maxLineRatio ?? 1.8
+  const minSize = opts.minSize ?? 8
+
+  // 1) 紧排最大字号：保证 n 字不溢出；先受 maxSize 与可读性下限约束
+  let size = Math.min(opts.maxSize, availH / n)
+  size = Math.max(minSize, size)
+  if (n * size > availH) size = availH / n // 极端长时下限让位，确保不溢出
+
+  // 2) 上下拉伸：行距拉开到接近填满容器（留 vertPad），但不超过 size·maxLineRatio
+  const targetFill = Math.max(size, availH - vertPad * 2)
+  let lh = size
+  if (n > 1) {
+    const want = (targetFill - size) / (n - 1)
+    lh = Math.max(size, Math.min(want, size * maxLineRatio))
+  }
+  const blockH = size + (n - 1) * lh
+  const blockTop = containerTop + (availH - blockH) / 2
+  const blockBottom = blockTop + blockH
+
+  // 3) 左右拉伸：向可用字宽拉宽，不超过 maxScaleX；不收缩（scaleX<1 时保持原字宽，自然留白）
+  const targetWidth = Math.max(size, spineWidth - horizPad * 2)
+  const scaleX = Math.max(1, Math.min(targetWidth / size, maxScaleX))
+
+  return {
+    chars: chars.map((ch, i) => ({ ch, y: blockTop + size / 2 + i * lh })),
+    size,
+    lh,
+    scaleX,
+    blockTop,
+    blockBottom
+  }
+}
+
 /**
  * 阿拉伯数字转中文数字（1~9999）
  * 叶码、卷次、世次均用此函数，需支持百叶以上的长篇家谱。

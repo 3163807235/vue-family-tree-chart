@@ -27,6 +27,7 @@ export type { TreeSliceResult } from './core/volume/treeTiles'
 export {
   computeVolumeGeometry,
   fitVerticalTitleSize,
+  layoutSpineTitle,
   normalizeBinding,
   computeBindingOnSpine,
   paginateVerticalText,
@@ -41,6 +42,7 @@ export {
 } from './core/volume/paginate'
 export type * from './core/types'
 export type * from './core/volume/types'
+export type { SpineTitleChar, SpineTitleLayout } from './core/volume/paginate'
 
 const plugin: Plugin = {
   install(app: App) {

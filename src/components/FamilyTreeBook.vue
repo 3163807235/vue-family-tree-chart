@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
 import { runBookLayout } from '../core/bookLayout'
-import { fitVerticalTitleSize } from '../core/volume/paginate'
+import { layoutSpineTitle } from '../core/volume/paginate'
 import type { FamilyNode, BookLayoutOptions, BookPage, NameFormatter } from '../core/types'
 
 interface Props {
@@ -67,35 +67,30 @@ const RUNNING_TITLE_FONT = "'Source Han Serif CN','思源宋体 CN','Noto Serif 
 
 // 书名（版心竖排大字）专用：思源宋体 SemiBold 600、二号（22pt≈29.33px）；字行距 1.15 与全书紧排一致
 const TITLE_FONT = "'Source Han Serif CN','思源宋体 CN','Noto Serif SC','SimSun',serif"
-const titleChars = computed(() => (props.title ? props.title.split('') : []))
-
 /**
- * 版心书名字号：默认 45px；字数多时按「内栏顶（frame.top+5）～上鱼尾顶缘」容器自适应缩小，
- * 保证书名永不撞鱼尾、不越版框。最小 18px（仍清晰可辨）。
+ * 中缝书名排版（共用 layoutSpineTitle）：上下拉伸填满容器、左右限幅拉宽并留白，始终单列居中。
+ * 几何取自第一页——世系录每页版心一致，故可复用同一布局。
  */
-const titleFontSize = computed(() => {
+const titleLayout = computed(() => {
   const page = book.value.pages[0]
-  const n = titleChars.value.length
-  if (!page || n === 0) return 45
+  if (!page) return null
   const tailHalfH = (page.spine.width * 0.6876) / 2
-  const avail = (page.spine.upperTailY - tailHalfH) - (page.frame.top + 5)
-  return fitVerticalTitleSize(avail, n, 45, 1.15, 18)
+  return layoutSpineTitle(
+    page.frame.top + 5,
+    page.spine.upperTailY - tailHalfH,
+    page.spine.width,
+    props.title || '',
+    { maxSize: 45, maxScaleX: 1.25, horizPad: 6, vertPad: 3 }
+  )
 })
-const titleLineH = computed(() => titleFontSize.value * 1.15)
+const titleChars = computed(() => titleLayout.value?.chars.map(c => c.ch) ?? (props.title ? props.title.split('') : []))
+/** 中缝书名字号（模板绑定用） */
+const titleFontSize = computed(() => titleLayout.value?.size ?? 45)
+/** 中缝书名横向拉伸倍数（模板 scaleX 用，≥1） */
+const titleScaleX = computed(() => titleLayout.value?.scaleX ?? 1)
 
-/**
- * 书名第 i 字的字心 y：整块在「内栏顶（frame.top+5）～上鱼尾顶缘」容器内上下居中。
- * 鱼尾半高须与模板多边形几何一致（鱼尾高＝版心宽×0.6876）。
- */
-const titleCharY = (page: BookPage, i: number) => {
-  const n = titleChars.value.length
-  const tailHalfH = (page.spine.width * 0.6876) / 2
-  const containerTop = page.frame.top + 5
-  const containerBottom = page.spine.upperTailY - tailHalfH
-  const blockCenterY = (containerTop + containerBottom) / 2
-  const lh = titleLineH.value
-  return blockCenterY - ((n - 1) * lh) / 2 + i * lh
-}
+/** 书名第 i 字的字心 y（由共享排版结果给出） */
+const titleCharY = (_page: BookPage, i: number) => titleLayout.value?.chars[i]?.y ?? 0
 
 const options = computed<BookLayoutOptions>(() => ({
   pageWidth: props.pageWidth,
@@ -248,13 +243,15 @@ const genBadgeH = computed(() =>
                 :y1="page.frame.top" :y2="page.frame.bottom"
                 stroke="#1a1208" stroke-width="0" />
 
-          <!-- 书名（上鱼尾上方竖排）：思源宋体 SemiBold 600、二号，整块在「内栏顶～上鱼尾」容器内上下居中 -->
-          <text v-if="title" text-anchor="middle"
-                :style="{ fontSize: titleFontSize + 'px', fill: '#1a1208', fontWeight: 600, fontFamily: TITLE_FONT }">
-            <tspan v-for="(ch, i) in titleChars" :key="i"
-                   :x="page.spine.centerX"
-                   :y="titleCharY(page, i)" dominant-baseline="central">{{ ch }}</tspan>
-          </text>
+          <!-- 书名（上鱼尾上方竖排）：左右以版心中线为轴限幅拉伸（scaleX），上下拉伸填满容器，单列居中 -->
+          <g v-if="title" :transform="`translate(${page.spine.centerX},0) scale(${titleScaleX},1) translate(${-page.spine.centerX},0)`">
+            <text text-anchor="middle"
+                  :style="{ fontSize: titleFontSize + 'px', fill: '#1a1208', fontWeight: 600, fontFamily: TITLE_FONT }">
+              <tspan v-for="(ch, i) in titleChars" :key="i"
+                     :x="page.spine.centerX"
+                     :y="titleCharY(page, i)" dominant-baseline="central">{{ ch }}</tspan>
+            </text>
+          </g>
 
           <!-- 上鱼尾（黑鱼尾：上平实心、下缘双叉内凹；多边形取自 yuwei.svg 版刻鱼尾，
                等比缩放至与中缝等宽（高=宽×31.18/45.35≈0.6876），几何中心对齐 upperTailY（版心纵向 1/4）；

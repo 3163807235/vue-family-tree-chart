@@ -3,7 +3,7 @@
 // 版框、乌丝栏、版心鱼尾、书眉、叶码均自立绘制，与 FamilyTreeBook 同一版刻行款。
 import { computed, shallowRef } from 'vue'
 import { assembleVolume } from '../core/volume/assemble'
-import { fitVerticalTitleSize } from '../core/volume/paginate'
+import { layoutSpineTitle } from '../core/volume/paginate'
 import { treeGenerationLabel, treeNameSpans, treeNodeExtras } from '../core/volume/treeTiles'
 import type { CustomRenderer, VolumePage, VolumePlan } from '../core/volume/types'
 import type { TreeTile } from '../core/volume/types'
@@ -70,33 +70,30 @@ const punctColor = computed(() => props.plan.punct?.color || undefined)
 const fillOf = (c: { punct?: boolean }): string | undefined =>
   c.punct ? punctColor.value : undefined
 
-/** 版心书名最大字号（字距=字号，紧排） */
+/** 中缝书名最大字号 */
 const SPINE_TITLE_MAX_SIZE = 50
 
 /**
- * 版心书名（竖排）：整块在「内栏顶（frame.top+10）～上鱼尾顶缘」容器内上下居中；
- * 字数多时字号自适应缩小，永不撞鱼尾、不越版框。
+ * 中缝书名排版（共用 layoutSpineTitle）：上下拉伸填满容器、左右限幅拉宽并留白，始终单列居中。
+ * 几何取自第一页——全书每页版心一致，故可复用同一布局。
  */
-const spineTitle = computed(() => {
+const spineLayout = computed(() => {
   const page = result.value.pages[0]
-  const chars = Array.from(props.plan.title || '')
-  if (!page || chars.length === 0) return []
+  if (!page) return null
   const tailHalfH = (page.spine.width * 0.6876) / 2
-  const containerTop = page.frame.top + 10
-  const containerBottom = page.spine.upperTailY - tailHalfH
-  const avail = containerBottom - containerTop
-  const size = fitVerticalTitleSize(avail, chars.length, SPINE_TITLE_MAX_SIZE, 1.0, 18)
-  const lh = size
-  const centerY = (containerTop + containerBottom) / 2
-  return chars.map((ch, i) => ({
-    ch,
-    size,
-    y: centerY - ((chars.length - 1) * lh) / 2 + i * lh
-  }))
+  return layoutSpineTitle(
+    page.frame.top + 10,
+    page.spine.upperTailY - tailHalfH,
+    page.spine.width,
+    props.plan.title || '',
+    { maxSize: SPINE_TITLE_MAX_SIZE, maxScaleX: 1.25, horizPad: 6, vertPad: 4 }
+  )
 })
-
-/** 版心书名字号（供模板绑定，与 spineTitle 首字同步） */
-const spineTitleSize = computed(() => spineTitle.value[0]?.size ?? SPINE_TITLE_MAX_SIZE)
+const spineTitle = computed(() => spineLayout.value?.chars ?? [])
+/** 中缝书名字号（供模板绑定） */
+const spineTitleSize = computed(() => spineLayout.value?.size ?? SPINE_TITLE_MAX_SIZE)
+/** 中缝书名横向拉伸倍数（供模板 scaleX，≥1） */
+const spineTitleScaleX = computed(() => spineLayout.value?.scaleX ?? 1)
 
 function frameBox(page: VolumePage) {
   return {
@@ -389,9 +386,12 @@ function gridLines(page: VolumePage): number[] {
 
         <!-- ===== 版心：书名、鱼尾、叶码（封面无版心） ===== -->
         <g v-if="hasFrame(page)" class="ftc-volume-spine">
-          <text text-anchor="middle" :style="{ fontSize: spineTitleSize + 'px', fill: '#1a1208', fontWeight: 600 }">
-            <tspan v-for="(c, i) in spineTitle" :key="'st' + i" :x="page.spine.centerX" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
-          </text>
+          <!-- 书名：左右以版心中线为轴做限幅拉伸（scaleX），保持居中、单列 -->
+          <g :transform="`translate(${page.spine.centerX},0) scale(${spineTitleScaleX},1) translate(${-page.spine.centerX},0)`">
+            <text text-anchor="middle" :style="{ fontSize: spineTitleSize + 'px', fill: '#1a1208', fontWeight: 600 }">
+              <tspan v-for="(c, i) in spineTitle" :key="'st' + i" :x="page.spine.centerX" :y="c.y" dominant-baseline="central">{{ c.ch }}</tspan>
+            </text>
+          </g>
           <g :transform="`translate(${page.spine.centerX}, ${page.spine.upperTailY})`">
             <rect :x="-page.spine.width / 2 + 1" :y="-(page.spine.width * 0.6876) / 2"
                   :width="page.spine.width - 2" :height="page.spine.width * 0.6876" fill="#fffdf7" />
