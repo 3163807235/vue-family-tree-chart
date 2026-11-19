@@ -118,7 +118,7 @@ watch(
   }
   .ftc-ruler-row {
     position: absolute;
-    left: 8px;
+    right: 8px;
     color: var(--ftc-ruler-color, #9C3E28);
     background: var(--ftc-ruler-bg, #FFF2DE);
     border: solid var(--ftc-ruler-border, #D9A46A);
