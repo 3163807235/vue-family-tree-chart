@@ -80,7 +80,7 @@ const titleLayout = computed(() => {
     page.spine.upperTailY - tailHalfH,
     page.spine.width,
     props.title || '',
-    { maxSize: 45, maxScaleX: 1.25, horizPad: 6, vertPad: 3 }
+    { maxSize: 45, maxScaleX: 1.7, horizPad: 6, vertPad: 8 }
   )
 })
 const titleChars = computed(() => titleLayout.value?.chars.map(c => c.ch) ?? (props.title ? props.title.split('') : []))

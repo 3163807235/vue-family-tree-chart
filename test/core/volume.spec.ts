@@ -94,7 +94,7 @@ describe('fitVerticalTitleSize 竖排书名字号自适应', () => {
 describe('layoutSpineTitle 中缝书名排版（上下拉伸填满 + 左右限幅拉宽留白）', () => {
   // 容器与默认版心一致：top=86, bottom=303（avail=217），中缝宽 60
   const CT = 86, CB = 303, SW = 60
-  const opts = { maxSize: 50, maxScaleX: 1.25, horizPad: 6, vertPad: 4 }
+  const opts = { maxSize: 50, maxScaleX: 1.7, horizPad: 6, vertPad: 8 }
 
   it('短谱名字号取最大，上下拉开填满容器，左右不拉（scaleX=1）', () => {
     const r = layoutSpineTitle(CT, CB, SW, '测试宗谱', opts) // 4 字
@@ -110,11 +110,14 @@ describe('layoutSpineTitle 中缝书名排版（上下拉伸填满 + 左右限�
 
   it('中等长度谱名横向拉宽（scaleX>1）但不超过上限，左右仍留白', () => {
     const r = layoutSpineTitle(CT, CB, SW, '测试但是五宗谱', opts) // 7 字
-    expect(r.size).toBeCloseTo(217 / 7, 3) // 紧排字号
-    expect(r.scaleX).toBeGreaterThan(1)
-    expect(r.scaleX).toBeLessThanOrEqual(1.25)
+    expect(r.size).toBeCloseTo((CB - CT - 16) / 7, 3) // 内区（扣上下留白）紧排字号
+    expect(r.scaleX).toBeGreaterThan(1.25)
+    expect(r.scaleX).toBeLessThanOrEqual(1.7)
     const drawnWidth = r.size * r.scaleX
     expect((SW - drawnWidth) / 2).toBeGreaterThanOrEqual(6 - 0.5) // 每侧留白 ≥ horizPad
+    // 底端与容器底（鱼尾上沿）留出间距，不再贴边
+    expect(CB - r.blockBottom).toBeGreaterThanOrEqual(8 - 0.5)
+    expect(r.blockTop - CT).toBeGreaterThanOrEqual(8 - 0.5)
   })
 
   it('超长谱名不再因字号下限卡死而溢出（回归）', () => {

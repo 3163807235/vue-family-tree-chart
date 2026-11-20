@@ -86,7 +86,7 @@ const spineLayout = computed(() => {
     page.spine.upperTailY - tailHalfH,
     page.spine.width,
     props.plan.title || '',
-    { maxSize: SPINE_TITLE_MAX_SIZE, maxScaleX: 1.25, horizPad: 6, vertPad: 4 }
+    { maxSize: SPINE_TITLE_MAX_SIZE, maxScaleX: 1.7, horizPad: 6, vertPad: 8 }
   )
 })
 const spineTitle = computed(() => spineLayout.value?.chars ?? [])

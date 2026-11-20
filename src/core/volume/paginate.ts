@@ -84,7 +84,7 @@ export interface SpineTitleLayout {
 /**
  * 中缝（版心）竖排书名排版，供 Volume 成册页与 Book 世系录页共用（单一决策点）：
  *  1. 字号按「紧排不溢出」取最大（受 maxSize 限制）；超长时硬下限让位，保证永不越框；
- *  2. 上下拉伸：有富余则拉开行距填满容器（上下各留 vertPad），行距不超过 size·maxLineRatio 防过疏；
+ *  2. 上下拉伸：在扣除上下留白后的内区内拉开行距填满，行距不超过 size·maxLineRatio 防过疏；
  *  3. 左右拉伸：字宽向 spineWidth−2·horizPad 拉宽，但不超过 maxScaleX，保留左右留白；
  *  4. 始终单列、居中。
  */
@@ -108,26 +108,30 @@ export function layoutSpineTitle(
   const availH = containerBottom - containerTop
   if (n === 0 || !(availH > 0) || !Number.isFinite(availH)) return empty
 
-  const maxScaleX = opts.maxScaleX ?? 1.25
+  const maxScaleX = opts.maxScaleX ?? 1.7
   const horizPad = opts.horizPad ?? 6
-  const vertPad = opts.vertPad ?? 4
+  const vertPad = opts.vertPad ?? 8
   const maxLineRatio = opts.maxLineRatio ?? 1.8
   const minSize = opts.minSize ?? 8
 
-  // 1) 紧排最大字号：保证 n 字不溢出；先受 maxSize 与可读性下限约束
-  let size = Math.min(opts.maxSize, availH / n)
-  size = Math.max(minSize, size)
-  if (n * size > availH) size = availH / n // 极端长时下限让位，确保不溢出
+  // 上下各留 vertPad 的内区（容器过矮时退化，不留白以保证可用）
+  const innerH = availH - vertPad * 2
+  const usableH = innerH > 0 ? innerH : availH
+  const usableTop = innerH > 0 ? containerTop + vertPad : containerTop
 
-  // 2) 上下拉伸：行距拉开到接近填满容器（留 vertPad），但不超过 size·maxLineRatio
-  const targetFill = Math.max(size, availH - vertPad * 2)
+  // 1) 紧排最大字号：在留白后的内区内不溢出；先受 maxSize 与可读性下限约束
+  let size = Math.min(opts.maxSize, usableH / n)
+  size = Math.max(minSize, size)
+  if (n * size > usableH) size = usableH / n // 极端长时下限让位，确保不溢出
+
+  // 2) 上下拉伸：行距拉开到填满内区，但不超过 size·maxLineRatio
   let lh = size
   if (n > 1) {
-    const want = (targetFill - size) / (n - 1)
+    const want = (usableH - size) / (n - 1)
     lh = Math.max(size, Math.min(want, size * maxLineRatio))
   }
   const blockH = size + (n - 1) * lh
-  const blockTop = containerTop + (availH - blockH) / 2
+  const blockTop = usableTop + (usableH - blockH) / 2
   const blockBottom = blockTop + blockH
 
   // 3) 左右拉伸：向可用字宽拉宽，不超过 maxScaleX；不收缩（scaleX<1 时保持原字宽，自然留白）
