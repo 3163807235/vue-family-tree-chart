@@ -376,8 +376,8 @@ const volumePlan = computed(() =>
           type: 'text',
           blocks: [
             { kind: 'heading', text: '后记' },
-            { kind: 'paragraph', text: '是谱之修，起于己亥之春，成于孟冬。族中长者口述旧闻，少者校雠文字，凡三易稿。其间疏漏，尚祈后之贤者补苴而匡正之。' },
-            { kind: 'signature', text: '测试宗谱纂修委员会' }
+            { kind: 'paragraph', text: '是谱之修，起于己亥之春，成于孟冬。族中长者口述旧闻，少者校对文字，凡三易稿。其间疏漏，尚祈后之贤者补瓜而匡正之。' },
+            { kind: 'signature', text: '遵义凤冈宗谱纂修委员会' }
           ]
         }
       }
@@ -850,7 +850,7 @@ function toggleRootFold() {
       />
     </div>
     <div class="book-wrap" v-else-if="viewMode === 'book'">
-      <FamilyTreeBook :data="bookData" title="测试家谱" running-title="测试世系简录"
+      <FamilyTreeBook :data="bookData" title="遵义测试宗谱" running-title="测试世系简录"
                       :name-size="bookNameSize" :bio-size="bookBioSize"
                       :bio-line-spacing="bookBioLh"
                       :name-font-family="bookNameFont" :bio-font-family="bookBioFont"

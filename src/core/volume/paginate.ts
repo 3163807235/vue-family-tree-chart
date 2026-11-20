@@ -707,10 +707,9 @@ export function paginateToc(entries: TocEntry[], ctx: RenderContext): RawPage[] 
 
 /**
  * 封面 / 扉页：一页一叶（筒子页版框照常绘制，仅排布谱名等题字）。
- * 谱名竖排居中于右半叶中轴；整个视觉组合块（谱名 + 黄金比呼吸距 + 题记两行）
- * 在「右边内容区」（frame.top ~ frame.bottom）内按黄金比 0.382:0.618 分配
- * 上下留白：上留白占 0.382、下留白占 0.618，使谱名靠上、题记靠下且整体不贴地脚。
- * 呼吸距严格 = titleH / φ（谱名高 : 间距 = 1 : 0.618）。
+ * 谱名竖排居中于右半叶中轴，字距按 1.03×字号紧排；整个视觉组合块（谱名 + 呼吸距 + 题记两行）
+ * 最多占内容区 82%，余下留白按天头 0.65、地脚 0.35 分配，谱名落在中上位置、不贴上版框；
+ * 呼吸距 = titleH × 0.32（原黄金比 0.618 过大，谱名与题记之间空白失衡）。
  * 堂号竖排于谱名左侧（字号 titleSize / φ²，次弱层级），与谱名左缘留一个谱名字号的间隔，
  * 且距版框上界亦留白，不贴上边；
  * 题记横排两行、横向居中于谱名中轴、字号 titleSize / φ³、自适应压缩不越版框右缘。
@@ -751,19 +750,25 @@ export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'):
   })()
 
   // ---- 先按理想尺寸估算组合块高；超出右半叶内容区则整体等比缩放（谱名/呼吸距/题记同比） ----
-  const idealTitleLineH = idealTitleSize * 1.15
+  // 谱名字距收紧：推进 1.03×字号（原 1.15），字与字更紧凑
+  const TITLE_LINE_RATIO = 1.03
+  // 组合块最多占内容区 82%，余下 18% 作为天头/地脚留白，谱名不再顶到上版框
+  const COMBO_MAX_RATIO = 0.82
+  // 呼吸距 = titleH × 0.32（原黄金比 0.618 过大，题记被推得过远）
+  const BREATH_RATIO = 0.32
+  const idealTitleLineH = idealTitleSize * TITLE_LINE_RATIO
   const idealTitleH = titleCharCount * idealTitleLineH
-  const idealBreath = idealTitleH / PHI
+  const idealBreath = idealTitleH * BREATH_RATIO
   const idealMetaLineGap = finalMetaSizeIdeal * PHI
   const idealTwoMetaH = finalMetaSizeIdeal + idealMetaLineGap + finalMetaSizeIdeal
   const idealComboH = idealTitleH + idealBreath + idealTwoMetaH
-  const titleScale = Math.min(1, contentH / idealComboH)
+  const titleScale = Math.min(1, (contentH * COMBO_MAX_RATIO) / idealComboH)
 
-  // 缩放后最终尺寸（titleScale=1 时与原黄金比布局完全一致）
+  // 缩放后最终尺寸（titleScale=1 时按理想尺寸原样排布）
   const titleSize = idealTitleSize * titleScale
-  const titleLineH = titleSize * 1.15
+  const titleLineH = titleSize * TITLE_LINE_RATIO
   const titleH = titleCharCount * titleLineH
-  const breath = titleH / PHI
+  const breath = titleH * BREATH_RATIO
 
   // 题记最终字号：在「缩放后谱名比例字号」与「横向不越版框」之间取小者
   const metaSizeBase = titleSize / (PHI * PHI * PHI)
@@ -778,11 +783,12 @@ export function buildCoverPage(ctx: RenderContext, mode: 'cover' | 'titlePage'):
   const twoMetaH = finalMetaSize + metaLineGap + finalMetaSize
   const comboH = titleH + breath + twoMetaH
 
-  // 可用留白 = 内容区高 − 组合块高；缩放后 comboH ≤ contentH，呼吸距与留白按黄金比分配
+  // 可用留白 = 内容区高 − 组合块高；缩放后 comboH ≤ contentH
   const availablePad = Math.max(0, contentH - comboH)
-  const topPad = availablePad * (PHI - 1)   // 0.382 分配给上方（谱名顶到内容区顶的空白）
+  // 上留白占 0.65：天头大于地脚，谱名整体下移到内容区偏中上位置
+  const topPad = availablePad * 0.65
 
-  // 组合块顶 = 内容区顶 + 黄金比上留白 → 谱名从此起排
+  // 组合块顶 = 内容区顶 + 上留白 → 谱名从此起排
   const titleTop = contentTop + topPad
   const titleBottom = titleTop + titleH
   const titleChars = verticalRun(title, titleX, titleTop, titleLineH, titleSize, ctx.enablePunct)
