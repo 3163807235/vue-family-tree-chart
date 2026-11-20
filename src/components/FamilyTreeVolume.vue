@@ -82,7 +82,7 @@ const spineLayout = computed(() => {
   if (!page) return null
   const tailHalfH = (page.spine.width * 0.6876) / 2
   return layoutSpineTitle(
-    page.frame.top + 10,
+    page.frame.top + 5,
     page.spine.upperTailY - tailHalfH,
     page.spine.width,
     props.plan.title || '',

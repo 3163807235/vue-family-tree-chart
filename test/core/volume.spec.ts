@@ -92,8 +92,8 @@ describe('fitVerticalTitleSize 竖排书名字号自适应', () => {
 })
 
 describe('layoutSpineTitle 中缝书名排版（上下拉伸填满 + 左右限幅拉宽留白）', () => {
-  // 容器与默认版心一致：top=86, bottom=303（avail=217），中缝宽 60
-  const CT = 86, CB = 303, SW = 60
+  // 容器与默认版心一致：内栏上缘 81、鱼尾上沿 303（avail=222），中缝宽 60
+  const CT = 81, CB = 303, SW = 60
   const opts = { maxSize: 50, maxScaleX: 1.7, horizPad: 6, vertPad: 8 }
 
   it('短谱名字号取最大，上下拉开填满容器，左右不拉（scaleX=1）', () => {
